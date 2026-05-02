@@ -1,0 +1,15 @@
+venv/
+.env
+__pycache__/
+*.py[cod]
+*.sqlite3
+*.db
+instance/
+.pytest_cache/
+.coverage
+htmlcov/
+app/static/uploads/
+.env.*
+!.env.example
+.docker-build/
+docker-data/

@@ -1,0 +1,16 @@
+services:
+  parent:
+    build:
+      context: .
+    container_name: parrot-parent
+    env_file:
+      - .env
+    environment:
+      APP_ENV: production
+      FLASK_ENV: production
+      FLASK_DEBUG: "False"
+      PORT: 5000
+    ports:
+      - "5000:5000"
+    restart: unless-stopped
+

@@ -1,0 +1,245 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Database Tables</title>
+    <style>
+        :root {
+            color-scheme: light;
+            --bg: #eef2f7;
+            --panel: #ffffff;
+            --text: #172033;
+            --muted: #667085;
+            --line: #cfd8e3;
+            --header: #e6edf5;
+            --subheader: #f4f7fb;
+            --accent: #116a62;
+            --pk: #e6f4f1;
+            --null: #fff5db;
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            background: var(--bg);
+            color: var(--text);
+            font-family: Arial, Helvetica, sans-serif;
+        }
+
+        header {
+            background: var(--panel);
+            border-bottom: 1px solid var(--line);
+            padding: 24px 28px 18px;
+        }
+
+        h1 {
+            margin: 0;
+            font-size: 26px;
+        }
+
+        .summary {
+            margin-top: 8px;
+            color: var(--muted);
+            font-size: 14px;
+        }
+
+        main {
+            width: min(1400px, calc(100% - 28px));
+            margin: 22px auto 48px;
+        }
+
+        .db-table {
+            background: var(--panel);
+            border: 1px solid var(--line);
+            border-radius: 8px;
+            margin-bottom: 26px;
+            overflow: hidden;
+        }
+
+        .db-table-title {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 16px;
+            padding: 14px 16px;
+            border-bottom: 1px solid var(--line);
+            background: #fbfcfe;
+        }
+
+        h2 {
+            margin: 0;
+            font-size: 19px;
+        }
+
+        .badge {
+            color: var(--accent);
+            background: var(--pk);
+            border: 1px solid #c8e6df;
+            border-radius: 999px;
+            padding: 5px 10px;
+            font-size: 13px;
+            white-space: nowrap;
+        }
+
+        .table-wrap {
+            overflow: auto;
+            max-height: 620px;
+        }
+
+        table {
+            width: 100%;
+            min-width: 900px;
+            border-collapse: separate;
+            border-spacing: 0;
+            font-size: 14px;
+        }
+
+        th,
+        td {
+            border-right: 1px solid var(--line);
+            border-bottom: 1px solid var(--line);
+            padding: 9px 10px;
+            text-align: left;
+            vertical-align: top;
+        }
+
+        th:last-child,
+        td:last-child {
+            border-right: 0;
+        }
+
+        thead th {
+            position: sticky;
+            top: 0;
+            z-index: 2;
+            background: var(--header);
+            color: #253247;
+            min-width: 150px;
+        }
+
+        tbody tr:nth-child(even) td {
+            background: #fafbfd;
+        }
+
+        tbody tr:last-child td {
+            border-bottom: 0;
+        }
+
+        td {
+            color: #2f3a4c;
+            max-width: 320px;
+            overflow-wrap: anywhere;
+        }
+
+        .column-name {
+            display: block;
+            font-weight: 700;
+            margin-bottom: 5px;
+        }
+
+        .column-meta {
+            display: block;
+            color: var(--muted);
+            font-size: 12px;
+            font-weight: 400;
+            line-height: 1.45;
+        }
+
+        .constraint {
+            display: inline-block;
+            margin: 5px 4px 0 0;
+            padding: 3px 7px;
+            border-radius: 999px;
+            background: var(--subheader);
+            border: 1px solid var(--line);
+            color: #4a5568;
+            font-size: 11px;
+            font-weight: 600;
+            white-space: nowrap;
+        }
+
+        .constraint.strong {
+            background: var(--pk);
+            border-color: #b7dbd4;
+            color: var(--accent);
+        }
+
+        .empty-row td {
+            background: var(--null);
+            color: #77551e;
+            font-weight: 600;
+            text-align: center;
+            padding: 16px;
+        }
+
+        .null-value {
+            color: var(--muted);
+            font-style: italic;
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <h1>Database Tables</h1>
+        <div class="summary">{{ tables|length }} tables found. Each section below is rendered like a real database table.</div>
+    </header>
+
+    <main>
+        {% for table_name, table in tables.items() %}
+            <section class="db-table">
+                <div class="db-table-title">
+                    <h2>{{ table_name }}</h2>
+                    <span class="badge">{{ table.columns|length }} columns · {{ table.rows|length }} rows</span>
+                </div>
+
+                <div class="table-wrap">
+                    <table>
+                        <thead>
+                            <tr>
+                                {% for column in table.columns %}
+                                    <th>
+                                        <span class="column-name">{{ column.column }}</span>
+                                        <span class="column-meta">
+                                            {{ column.type }}{% if column.max_length %}({{ column.max_length }}){% endif %}
+                                        </span>
+                                        {% for constraint in column.constraints %}
+                                            <span class="constraint {% if 'PRIMARY KEY' in constraint or 'UNIQUE' in constraint or 'FOREIGN KEY' in constraint %}strong{% endif %}">
+                                                {{ constraint }}
+                                            </span>
+                                        {% endfor %}
+                                    </th>
+                                {% endfor %}
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% if table.rows %}
+                                {% for row in table.rows %}
+                                    <tr>
+                                        {% for column in table.columns %}
+                                            <td>
+                                                {% if row[column.column] is none %}
+                                                    <span class="null-value">NULL</span>
+                                                {% else %}
+                                                    {{ row[column.column] }}
+                                                {% endif %}
+                                            </td>
+                                        {% endfor %}
+                                    </tr>
+                                {% endfor %}
+                            {% else %}
+                                <tr class="empty-row">
+                                    <td colspan="{{ table.columns|length }}">No rows in this table</td>
+                                </tr>
+                            {% endif %}
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+        {% endfor %}
+    </main>
+</body>
+</html>
