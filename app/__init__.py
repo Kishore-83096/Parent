@@ -1,4 +1,5 @@
 from flask import Flask
+from flask_cors import CORS
 from flask_jwt_extended import JWTManager
 from flask_marshmallow import Marshmallow
 from flask_migrate import Migrate
@@ -16,6 +17,8 @@ migrate = Migrate()
 def create_app(config_name=None):
     app = Flask(__name__)
     app.config.from_object(config_by_name[config_name or "development"])
+
+    CORS(app, origins=app.config["CORS_ORIGINS"] or [])
 
     db.init_app(app)
     ma.init_app(app)

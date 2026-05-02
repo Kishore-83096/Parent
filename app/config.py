@@ -25,12 +25,18 @@ def get_engine_options(database_url):
     return options
 
 
+def get_allowed_hosts():
+    hosts = os.getenv("ALLOWED_HOSTS", "")
+    return [host.strip() for host in hosts.split(",") if host.strip()]
+
+
 class Config:
     SECRET_KEY = os.getenv("SECRET_KEY", "dev-secret-key")
     JWT_SECRET_KEY = os.getenv("JWT_SECRET_KEY", "dev-jwt-secret-key")
     SQLALCHEMY_DATABASE_URI = get_database_url()
     SQLALCHEMY_ENGINE_OPTIONS = get_engine_options(SQLALCHEMY_DATABASE_URI)
     SQLALCHEMY_TRACK_MODIFICATIONS = False
+    CORS_ORIGINS = get_allowed_hosts()
     CLOUDINARY_PROFILE_FOLDER = os.getenv("CLOUDINARY_PROFILE_FOLDER", "MAIN/Display_pics")
     MAX_CONTENT_LENGTH = int(os.getenv("MAX_CONTENT_LENGTH", 5 * 1024 * 1024))
     JWT_ACCESS_TOKEN_EXPIRES = timedelta(hours=1)
