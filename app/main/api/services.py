@@ -152,7 +152,10 @@ def remove_user_profile_picture(user_id):
     if not profile.profile_picture:
         return {"message": "Profile picture not found."}, 404
 
-    delete_cloudinary_image(profile.profile_picture)
+    deleted, delete_error = delete_cloudinary_image(profile.profile_picture)
+    if not deleted:
+        return {"message": delete_error}, 502
+
     profile.profile_picture = None
     db.session.add(profile)
     db.session.commit()
@@ -175,8 +178,15 @@ def delete_user_account(user_id, payload):
     if user.username != username or user.email.lower() != email or not user.check_password(data["password"]):
         return {"message": "Username, email, or password is incorrect."}, 403
 
-    if user.profile and user.profile.profile_picture:
-        delete_cloudinary_image(user.profile.profile_picture)
+    profile = user.profile
+    if profile:
+        if profile.profile_picture:
+            deleted, delete_error = delete_cloudinary_image(profile.profile_picture)
+            if not deleted:
+                return {"message": delete_error}, 502
+
+        user.profile = None
+        db.session.flush()
 
     db.session.delete(user)
     db.session.commit()
@@ -318,13 +328,20 @@ def normalize_image_mode(image, output_format):
 def delete_cloudinary_image(profile_picture_url):
     public_id = extract_cloudinary_public_id(profile_picture_url)
     if not public_id:
-        return
+        return False, "Unable to identify the Cloudinary profile picture to delete."
 
     cloudinary.config(secure=True)
     try:
-        cloudinary.uploader.destroy(public_id, resource_type="image", invalidate=True)
+        result = cloudinary.uploader.destroy(public_id, resource_type="image", invalidate=True)
     except Exception:
-        return
+        current_app.logger.exception("Cloudinary profile picture deletion failed.")
+        return False, "Unable to delete profile picture from Cloudinary. Account was not deleted."
+
+    if result.get("result") in {"ok", "not found", "not_found"}:
+        return True, None
+
+    current_app.logger.warning("Cloudinary delete returned unexpected response: %s", result)
+    return False, "Unable to confirm profile picture deletion. Account was not deleted."
 
 
 def extract_cloudinary_public_id(profile_picture_url):

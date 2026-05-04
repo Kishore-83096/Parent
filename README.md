@@ -292,8 +292,8 @@ There are two groups of routes:
 | `/parent/auth/change-password` | `POST` | Access token | `{"username","email","current_password","new_password"}` | `{"message":"Password changed successfully."}` | wrong username, email, or current password; same new password; short new password; missing token |
 | `/parent/profile/` | `GET` | Access token | None | profile JSON | profile not found, missing token, invalid token |
 | `/parent/profile/` | `PUT` | Access token | JSON or form-data with profile fields and optional `profile_picture` | updated profile JSON | invalid `card_type`, invalid image type, image cannot compress to `50 KB`, user not found, validation errors, missing token |
-| `/parent/profile/picture` | `DELETE` | Access token | None | `{"message":"Profile picture removed successfully."}` | profile not found, profile picture not found, missing token |
-| `/parent/account` | `DELETE` | Access token | `{"username","email","password"}` | `{"message":"Account deleted successfully."}` | wrong username, email, or password; user not found; validation errors; missing token |
+| `/parent/profile/picture` | `DELETE` | Access token | None | `{"message":"Profile picture removed successfully."}` | profile not found, profile picture not found, Cloudinary deletion failure, missing token |
+| `/parent/account` | `DELETE` | Access token | `{"username","email","password"}` | `{"message":"Account deleted successfully."}` | wrong username, email, or password; user not found; Cloudinary deletion failure; validation errors; missing token |
 
 ## Response Style
 
@@ -740,7 +740,7 @@ Functionality:
 
 - checks that the authenticated user has a profile
 - checks that a profile picture exists
-- removes the image from Cloudinary
+- removes the image from Cloudinary and confirms deletion
 - sets `profile_picture` to `null`
 
 Success response:
@@ -792,9 +792,9 @@ Functionality:
 
 - verifies the logged-in user
 - checks `username`, `email`, and `password`
-- deletes the Cloudinary profile picture if present
-- deletes the user account
-- removes the related profile through cascade delete
+- deletes and confirms the Cloudinary profile picture first, if present
+- deletes the related profile data
+- deletes the user account last
 
 Success response:
 
