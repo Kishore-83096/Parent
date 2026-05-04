@@ -2,7 +2,7 @@ from functools import wraps
 
 from flask_jwt_extended import get_jwt_identity, jwt_required
 
-from app.models import User
+from app.main.api.model import User
 
 
 def premium_required():

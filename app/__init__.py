@@ -25,13 +25,13 @@ def create_app(config_name=None):
     jwt.init_app(app)
     migrate.init_app(app, db)
 
-    from app.resources.auth import auth_bp
-    from app.resources.health import health_bp
-    from app.resources.profile import profile_bp
+    from app.main.api.errors import register_api_error_handlers
+    from app.main.api.routes import api_bp
+    from app.main.health.routes import health_bp
 
-    app.register_blueprint(auth_bp, url_prefix="/parent/auth")
+    register_api_error_handlers(app, jwt)
+    app.register_blueprint(api_bp, url_prefix="/parent")
     app.register_blueprint(health_bp)
-    app.register_blueprint(profile_bp, url_prefix="/parent/profile")
 
     @app.get("/")
     def index():

@@ -1,100 +1,122 @@
 # PARROT Parent Service
 
-Flask API service for the Parent module of PARROT. It provides parent account registration, login with JWT, profile management, profile picture uploads to Cloudinary, database health checks, and database schema inspection for testing.
+The PARROT Parent Service is a Flask-based backend for parent account management in the PARROT system. It handles registration, login, JWT-based authentication, profile management, profile-picture upload to Cloudinary, password changes, verified account deletion, service health checks, and database inspection endpoints used for testing and diagnostics.
+
+## What This Service Does
+
+- Creates parent accounts
+- Logs users in with JWT access and refresh tokens
+- Stores parent profile data
+- Uploads, replaces, compresses, and removes profile pictures with Cloudinary
+- Lets authenticated users change passwords securely
+- Lets authenticated users delete their account only after identity verification
+- Exposes health and database-check endpoints for debugging and monitoring
 
 ## Tech Stack
 
 - Python 3.12
-- Flask: web framework for building the API.
-- Flask-SQLAlchemy: database ORM for models and queries.
-- Flask-JWT-Extended: JWT authentication for protected routes.
-- Flask-Migrate / Alembic: database migrations.
-- PostgreSQL: production database.
-- Cloudinary: profile picture storage.
-- Marshmallow: request validation and response serialization.
-- Gunicorn: production WSGI server for Linux/Render.
-- Waitress: production-style WSGI server for Windows local testing.
-- Docker: containerized deployment.
+- Flask
+- Flask-SQLAlchemy
+- Flask-Migrate
+- Alembic
+- Marshmallow
+- Flask-JWT-Extended
+- PostgreSQL or SQLite
+- Cloudinary
+- Gunicorn
+- Waitress
+- Docker
 
 ## Folder Structure
 
 ```text
 Parent/
-├── app/
-│   ├── resources/
-│   │   ├── auth.py          # Register, login, refresh token
-│   │   ├── health.py        # Health, database health, schema viewer
-│   │   └── profile.py       # Profile CRUD and profile picture upload
-│   ├── templates/
-│   │   └── db_schema.html   # Browser database schema/table viewer
-│   ├── utils/
-│   │   └── decorators.py    # Custom decorators
-│   ├── __init__.py          # Flask app factory and blueprint registration
-│   ├── config.py            # App/database/cloud config
-│   ├── models.py            # User and Profile database models
-│   └── schemas.py           # Marshmallow validation schemas
-├── migrations/              # Alembic migration files
-├── Dockerfile               # Production Docker image
-├── docker-compose.yml       # Local Docker run
-├── Procfile                 # Render-style process command
-├── requirements.txt         # Python packages
-├── run.py                   # Local direct runner
-├── wsgi.py                  # Production WSGI entrypoint
-└── .env                     # Local secrets, not committed
+|-- app/
+|   |-- main/
+|   |   |-- api/
+|   |   |   |-- errors.py          # Global API error handling
+|   |   |   |-- model.py           # User and Profile models
+|   |   |   |-- routes.py          # Main API routes
+|   |   |   |-- schema.py          # Marshmallow request/response schemas
+|   |   |   `-- services.py        # Main API business logic
+|   |   |-- health/
+|   |   |   |-- routes.py          # Health and schema routes
+|   |   |   |-- services.py        # Health and DB logic
+|   |   |   `-- templates/
+|   |   |       `-- db_schema.html # HTML DB schema/table viewer
+|   |   `-- __init__.py
+|   |-- utils/
+|   |   |-- decorators.py
+|   |   `-- __init__.py
+|   |-- __init__.py                # App factory
+|   |-- config.py                  # Config and environment handling
+|   |-- models.py                  # Compatibility re-export
+|   |-- schemas.py                 # Compatibility re-export
+|   `-- __pycache__/
+|-- migrations/                    # Alembic migrations
+|-- Dockerfile
+|-- docker-compose.yml
+|-- Procfile
+|-- requirements.txt
+|-- run.py                         # Local development entrypoint
+`-- wsgi.py                        # Production WSGI entrypoint
 ```
 
 ## Environment Variables
 
-Create `.env` locally:
+Create a `.env` file for local or Docker-based runs:
 
 ```env
-APP_ENV=production
-FLASK_ENV=production
-FLASK_DEBUG=False
-DATABASE_URL=your_postgres_database_url
+APP_ENV=development
+FLASK_ENV=development
 SECRET_KEY=your_secret_key
 JWT_SECRET_KEY=your_jwt_secret_key
+DATABASE_URL=sqlite:///parent.db
 CLOUDINARY_URL=your_cloudinary_url
 CLOUDINARY_PROFILE_FOLDER=MAIN/Display_pics
+PORT=5000
+WEB_CONCURRENCY=2
+GUNICORN_TIMEOUT=120
 ```
 
-Do not commit `.env`.
+Important notes:
 
-## Run Locally
+- `DATABASE_URL` can point to SQLite for local development or PostgreSQL in production.
+- `CLOUDINARY_URL` is required for profile picture uploads.
+- `CLOUDINARY_PROFILE_FOLDER` controls where images are stored in Cloudinary.
 
-Development/direct run:
+## Running Locally
+
+Install dependencies:
+
+```powershell
+python -m venv venv
+venv\Scripts\activate
+pip install --upgrade pip
+pip install -r requirements.txt
+```
+
+Run database migrations:
+
+```powershell
+flask --app run.py db upgrade
+```
+
+Run the development server:
 
 ```powershell
 python run.py
 ```
 
-Production-style run on Windows:
-
-```powershell
-waitress-serve --listen=0.0.0.0:5000 wsgi:app
-```
-
-Production-style run on Linux/Render:
-
-```bash
-gunicorn wsgi:app
-```
-
-Docker:
-
-```powershell
-docker compose up --build
-```
-
-Base URL locally:
+Base URL:
 
 ```text
 http://127.0.0.1:5000
 ```
 
-## WSGI, Gunicorn, Waitress, And Docker
+## Running In Production Style
 
-### Why `wsgi.py` Exists
+### `wsgi.py`
 
 `wsgi.py` exposes the Flask app as a WSGI application:
 
@@ -102,75 +124,59 @@ http://127.0.0.1:5000
 app = create_app(config_name)
 ```
 
-Deployment servers like Gunicorn and Waitress need this object. They import `wsgi:app` and serve it. This is better for production than using Flask's built-in development server.
+Production servers do not call `python run.py`. They import `wsgi:app`.
 
-Use `run.py` for direct local runs:
+### Why Gunicorn Is Used
 
-```powershell
-python run.py
-```
+Gunicorn is a production WSGI server commonly used on Linux-based environments such as Render, containers, and cloud VMs.
 
-Use `wsgi.py` for production servers:
+Use Gunicorn when:
 
-```text
-wsgi:app
-```
+- deploying on Linux
+- running inside Docker
+- serving production traffic
 
-### Why Gunicorn
-
-Gunicorn is a production WSGI server commonly used on Linux hosting platforms like Render.
-
-Use it on Render/Linux:
+Command:
 
 ```bash
-gunicorn wsgi:app
+gunicorn --bind 0.0.0.0:5000 --workers 2 --timeout 120 wsgi:app
 ```
 
-In Docker, the service starts with:
+### Why Waitress Is Used
 
-```bash
-gunicorn --bind 0.0.0.0:${PORT} --workers ${WEB_CONCURRENCY:-2} --timeout ${GUNICORN_TIMEOUT:-120} wsgi:app
-```
+Waitress is a production-grade WSGI server that works well on Windows. Gunicorn does not support Windows because it depends on Unix-only behavior.
 
-Gunicorn does not work on Windows because it depends on Unix-only modules like `fcntl`.
+Use Waitress when:
 
-### Why Waitress
+- you want a production-style server on Windows
+- you want to test `wsgi:app` locally without Flask's dev server
 
-Waitress is a production-style WSGI server that works on Windows.
-
-Use it for local Windows testing:
+Command:
 
 ```powershell
 waitress-serve --listen=0.0.0.0:5000 wsgi:app
 ```
 
-This lets you test the same `wsgi:app` production entrypoint without using Flask's development server.
+### When To Use `run.py`, `wsgi.py`, Gunicorn, And Waitress
 
-### Why Docker
+- `python run.py`: local development and quick testing
+- `wsgi.py`: the WSGI app entrypoint imported by production servers
+- `gunicorn wsgi:app`: Linux production server
+- `waitress-serve ... wsgi:app`: Windows production-style server
 
-Docker packages the service, dependencies, and production command into one container image. This makes local testing and deployment more consistent.
+## Why Docker Is Used
 
-The Docker image copies only needed files:
+Docker packages the service, Python runtime, dependencies, and production command into a single reproducible environment. This reduces machine-specific issues and makes local testing closer to production.
 
-```text
-app/
-migrations/
-run.py
-wsgi.py
-Procfile
-requirements.txt
-```
+Benefits:
 
-It excludes local-only files:
+- consistent runtime across machines
+- easier deployment
+- isolated dependency management
+- simpler production startup
+- predictable container networking and environment configuration
 
-```text
-venv/
-.env
-__pycache__/
-instance/
-app/static/uploads/
-.git/
-```
+## Docker Commands
 
 Build the image:
 
@@ -178,10 +184,10 @@ Build the image:
 docker build -t parrot-parent:local .
 ```
 
-Run the image:
+Run the container directly:
 
 ```powershell
-docker run --env-file .env -p 5000:5000 parrot-parent:local
+docker run --env-file .env -p 5000:5000 --name parrot-parent parrot-parent:local
 ```
 
 Run with Docker Compose:
@@ -190,39 +196,125 @@ Run with Docker Compose:
 docker compose up --build
 ```
 
-Stop Docker Compose:
+Run in detached mode:
+
+```powershell
+docker compose up -d --build
+```
+
+Stop Compose services:
 
 ```powershell
 docker compose down
 ```
 
-View running containers:
+Restart Compose services:
+
+```powershell
+docker compose restart
+```
+
+See running containers:
 
 ```powershell
 docker ps
 ```
 
-View logs:
+See container logs:
 
 ```powershell
 docker logs parrot-parent
 ```
 
-If Docker is installed but PowerShell says `docker` is not recognized, add Docker CLI to the current terminal PATH:
+Follow logs continuously:
 
 ```powershell
-$env:Path = 'C:\Program Files\Docker\Docker\resources\bin;' + $env:Path
+docker logs -f parrot-parent
 ```
 
-## Test APIs
+Open a shell inside the running container:
 
-### Root
-
-```text
-GET /
+```powershell
+docker exec -it parrot-parent sh
 ```
 
-Response:
+Run migrations inside the container:
+
+```powershell
+docker exec -it parrot-parent flask --app run.py db upgrade
+```
+
+## Dockerfile And Compose Behavior
+
+### Dockerfile
+
+The Dockerfile:
+
+- starts from `python:3.12-slim`
+- installs dependencies from `requirements.txt`
+- copies `app/`, `migrations/`, `run.py`, `wsgi.py`, and `Procfile`
+- runs the app with Gunicorn
+- exposes port `5000`
+
+Container startup command:
+
+```bash
+gunicorn --bind 0.0.0.0:${PORT} --workers ${WEB_CONCURRENCY:-2} --timeout ${GUNICORN_TIMEOUT:-120} wsgi:app
+```
+
+### docker-compose.yml
+
+The compose file:
+
+- builds from the local project directory
+- loads environment variables from `.env`
+- maps container port `5000` to host port `5000`
+- restarts automatically unless stopped
+
+## API Overview
+
+There are two groups of routes:
+
+- main parent API routes under `/parent/...`
+- health and database routes at the root level
+
+### API Summary Table
+
+| Route | Method | Auth Required | Request Body | Success Response | Error Cases |
+|---|---|---|---|---|---|
+| `/` | `GET` | No | None | `{"message": "Hai to the Parent service of Parrot."}` | Usually none unless server error |
+| `/health` | `GET` | No | None | `{"status": "ok"}` | Usually none unless server error |
+| `/db/health` | `GET` | No | None | `{"database": "connected"}` | `{"database": "disconnected", "error": "..."}` |
+| `/db/schema` | `GET` | No | None | HTML schema viewer page | Server or database errors |
+| `/parent/auth/register` | `POST` | No | `{"username","password","confirm_password","first_name","last_name"}` | `{"message":"User registered successfully.","user":{...}}` | password mismatch, short password, invalid username, duplicate username, duplicate email |
+| `/parent/auth/login` | `POST` | No | `{"username","password"}` | `{"access_token":"...","refresh_token":"...","user":{...}}` | invalid username or password, validation errors |
+| `/parent/auth/refresh` | `POST` | Refresh token | None | `{"access_token":"..."}` | missing token, invalid token, expired token |
+| `/parent/auth/change-password` | `POST` | Access token | `{"username","email","current_password","new_password"}` | `{"message":"Password changed successfully."}` | wrong username, email, or current password; same new password; short new password; missing token |
+| `/parent/profile/` | `GET` | Access token | None | profile JSON | profile not found, missing token, invalid token |
+| `/parent/profile/` | `PUT` | Access token | JSON or form-data with profile fields and optional `profile_picture` | updated profile JSON | invalid `card_type`, invalid image type, image cannot compress to `50 KB`, user not found, validation errors, missing token |
+| `/parent/profile/picture` | `DELETE` | Access token | None | `{"message":"Profile picture removed successfully."}` | profile not found, profile picture not found, missing token |
+| `/parent/account` | `DELETE` | Access token | `{"username","email","password"}` | `{"message":"Account deleted successfully."}` | wrong username, email, or password; user not found; validation errors; missing token |
+
+## Response Style
+
+The service returns JSON for main APIs and error handling. The only HTML route is `GET /db/schema`.
+
+Common response patterns:
+
+- success with JSON body
+- validation failure with `message` and `errors`
+- authentication or authorization failure with `message`
+- database/server failure with `message`
+
+## Health And Diagnostics Routes
+
+### `GET /`
+
+Purpose:
+
+- confirms the service is reachable
+
+Success response:
 
 ```json
 {
@@ -230,13 +322,13 @@ Response:
 }
 ```
 
-### Service Health
+### `GET /health`
 
-```text
-GET /health
-```
+Purpose:
 
-Response:
+- basic service health check
+
+Success response:
 
 ```json
 {
@@ -244,13 +336,13 @@ Response:
 }
 ```
 
-### Database Health
+### `GET /db/health`
 
-```text
-GET /db/health
-```
+Purpose:
 
-Response:
+- checks whether the database connection is working
+
+Success response:
 
 ```json
 {
@@ -258,235 +350,549 @@ Response:
 }
 ```
 
-### Database Schema Viewer
-
-```text
-GET /db/schema
-```
-
-Opens a browser page showing database tables, columns, constraints, and row data.
-
-Important: this endpoint exposes database structure and table rows. Keep it for local/admin testing only, or protect/remove it before public production use.
-
-## Main APIs
-
-### Register Parent
-
-```text
-POST /parent/auth/register
-```
-
-Postman:
-
-- Method: `POST`
-- URL: `http://127.0.0.1:5000/parent/auth/register`
-- Headers: `Content-Type: application/json`
-- Body: raw JSON
+Failure response example:
 
 ```json
 {
-  "username": "testparent1",
-  "password": "password123",
-  "first_name": "Test",
-  "last_name": "Parent"
+  "database": "disconnected",
+  "error": "database error details"
 }
 ```
 
-Notes:
+### `GET /db/schema`
 
-- Email is generated automatically as `username@epost.com`.
-- A unique 10-digit account number starting with `7` is generated automatically.
+Purpose:
 
-### Login
+- renders an HTML page showing database tables, columns, constraints, and rows
 
-```text
-POST /parent/auth/login
-```
+Response type:
 
-Postman:
+- HTML, not JSON
 
-- Method: `POST`
-- URL: `http://127.0.0.1:5000/parent/auth/login`
-- Headers: `Content-Type: application/json`
-- Body: raw JSON
+Warning:
+
+- this route exposes schema and row data
+- keep it for local/admin/test use only
+
+## Main API Routes
+
+### `POST /parent/auth/register`
+
+Purpose:
+
+- creates a new parent account
+
+Request body:
 
 ```json
 {
-  "username": "testparent1",
-  "password": "password123"
+  "username": "parentdemo",
+  "password": "Parent123",
+  "confirm_password": "Parent123",
+  "first_name": "Priya",
+  "last_name": "Sharma"
 }
 ```
 
-Copy `access_token` from the response for protected APIs.
+Functionality:
 
-### Refresh Token
+- validates username format
+- validates password length
+- checks `confirm_password`
+- converts username to lowercase
+- auto-generates email as `username@epost.com`
+- generates a unique account number starting with `7`
+- creates a related profile record
 
-```text
-POST /parent/auth/refresh
-```
-
-Postman:
-
-- Method: `POST`
-- URL: `http://127.0.0.1:5000/parent/auth/refresh`
-- Headers:
-
-```text
-Authorization: Bearer YOUR_REFRESH_TOKEN
-```
-
-### Get Profile
-
-```text
-GET /parent/profile/
-```
-
-Postman headers:
-
-```text
-Authorization: Bearer YOUR_ACCESS_TOKEN
-```
-
-### Update Profile With JSON
-
-```text
-PUT /parent/profile/
-```
-
-Postman:
-
-- Method: `PUT`
-- URL: `http://127.0.0.1:5000/parent/profile/`
-- Headers:
-
-```text
-Content-Type: application/json
-Authorization: Bearer YOUR_ACCESS_TOKEN
-```
-
-Body:
+Success response:
 
 ```json
 {
-  "first_name": "Test",
-  "last_name": "Parent",
-  "phone": "9876543210",
-  "profile_picture": "https://example.com/profile.jpg",
+  "message": "User registered successfully.",
+  "user": {
+    "id": 1,
+    "username": "parentdemo",
+    "email": "parentdemo@epost.com",
+    "account_number": "7XXXXXXXXX",
+    "is_premium": false,
+    "created_at": "2026-05-04T00:00:00+00:00"
+  }
+}
+```
+
+Validation failure example:
+
+```json
+{
+  "errors": {
+    "confirm_password": [
+      "Passwords do not match."
+    ]
+  }
+}
+```
+
+Duplicate username or email example:
+
+```json
+{
+  "message": "Username is already registered."
+}
+```
+
+### `POST /parent/auth/login`
+
+Purpose:
+
+- authenticates a user and returns JWT tokens
+
+Request body:
+
+```json
+{
+  "username": "parentdemo",
+  "password": "Parent123"
+}
+```
+
+Functionality:
+
+- validates credentials
+- returns `access_token`
+- returns `refresh_token`
+- returns current user data
+
+Success response:
+
+```json
+{
+  "access_token": "<jwt>",
+  "refresh_token": "<jwt>",
+  "user": {
+    "id": 1,
+    "username": "parentdemo",
+    "email": "parentdemo@epost.com"
+  }
+}
+```
+
+Failure response:
+
+```json
+{
+  "message": "Invalid username or password."
+}
+```
+
+### `POST /parent/auth/refresh`
+
+Purpose:
+
+- issues a new access token using a refresh token
+
+Headers:
+
+```text
+Authorization: Bearer <refresh_token>
+```
+
+Success response:
+
+```json
+{
+  "access_token": "<new-jwt>"
+}
+```
+
+Failure examples:
+
+```json
+{
+  "message": "Missing Authorization Header"
+}
+```
+
+```json
+{
+  "message": "Token has expired."
+}
+```
+
+### `POST /parent/auth/change-password`
+
+Purpose:
+
+- changes the logged-in user's password after identity verification
+
+Headers:
+
+```text
+Authorization: Bearer <access_token>
+```
+
+Request body:
+
+```json
+{
+  "username": "parentdemo",
+  "email": "parentdemo@epost.com",
+  "current_password": "Parent123",
+  "new_password": "Parent456"
+}
+```
+
+Functionality:
+
+- checks that the JWT belongs to a real user
+- verifies the provided `username`, `email`, and `current_password`
+- rejects reuse of the current password
+- saves the new password as a hash
+
+Success response:
+
+```json
+{
+  "message": "Password changed successfully."
+}
+```
+
+Failure examples:
+
+```json
+{
+  "message": "Username, email, or current password is incorrect."
+}
+```
+
+```json
+{
+  "message": "New password must be different from the current password."
+}
+```
+
+```json
+{
+  "errors": {
+    "new_password": [
+      "Shorter than minimum length 8."
+    ]
+  }
+}
+```
+
+### `GET /parent/profile/`
+
+Purpose:
+
+- returns the authenticated user's profile
+
+Headers:
+
+```text
+Authorization: Bearer <access_token>
+```
+
+Functionality:
+
+- reads the user id from JWT
+- fetches the linked `profiles` record
+
+Success response:
+
+```json
+{
+  "id": 1,
+  "user_id": 1,
+  "first_name": "Priya",
+  "last_name": "Sharma",
+  "phone": "+91-9876543210",
+  "profile_picture": "https://res.cloudinary.com/...",
   "card_number": "4111111111111111",
-  "card_name": "Test Parent",
+  "card_name": "Priya Sharma",
   "card_type": "credit",
   "dr_no": "12A",
-  "floor": "2",
-  "street": "Main Street",
-  "area": "Central Area",
-  "city": "Chennai",
-  "state": "Tamil Nadu",
+  "floor": "3",
+  "street": "Lake View Road",
+  "area": "Indiranagar",
+  "city": "Bengaluru",
+  "state": "Karnataka",
+  "country": "India",
+  "updated_at": "2026-05-04T00:00:00+00:00"
+}
+```
+
+Failure examples:
+
+```json
+{
+  "message": "Profile not found."
+}
+```
+
+```json
+{
+  "message": "Missing Authorization Header"
+}
+```
+
+### `PUT /parent/profile/`
+
+Purpose:
+
+- creates or updates the authenticated user's profile
+
+Headers:
+
+```text
+Authorization: Bearer <access_token>
+```
+
+JSON example:
+
+```json
+{
+  "phone": "+91-9876543210",
+  "card_number": "4111111111111111",
+  "card_name": "Priya Sharma",
+  "card_type": "credit",
+  "dr_no": "12A",
+  "floor": "3",
+  "street": "Lake View Road",
+  "area": "Indiranagar",
+  "city": "Bengaluru",
+  "state": "Karnataka",
   "country": "India"
 }
 ```
 
-`card_type` must be:
+Form-data example:
 
 ```text
-credit
-debit
+first_name = Priya
+last_name = Sharma
+phone = +91-9876543210
+profile_picture = <image file>
 ```
 
-### Update Profile With Form-Data And Image
+Functionality:
+
+- supports JSON and multipart form-data
+- creates a profile if one does not already exist
+- validates `card_type` as `credit` or `debit`
+- uploads profile pictures to Cloudinary
+- if the uploaded image is over `50 KB`, attempts compression down to `50 KB`
+- if an old profile picture exists, deletes it from Cloudinary before replacing it
+
+Success response:
+
+```json
+{
+  "id": 1,
+  "user_id": 1,
+  "first_name": "Priya",
+  "last_name": "Sharma",
+  "phone": "+91-9876543210",
+  "profile_picture": "https://res.cloudinary.com/...",
+  "card_type": "credit",
+  "city": "Bengaluru",
+  "state": "Karnataka",
+  "country": "India"
+}
+```
+
+Failure examples:
+
+```json
+{
+  "message": "Profile picture must be a jpg, jpeg, png, or webp file."
+}
+```
+
+```json
+{
+  "message": "Unable to compress profile picture to 50 KB."
+}
+```
+
+```json
+{
+  "errors": {
+    "card_type": [
+      "Must be one of: credit, debit."
+    ]
+  }
+}
+```
+
+### `DELETE /parent/profile/picture`
+
+Purpose:
+
+- deletes only the profile picture, not the profile or account
+
+Headers:
 
 ```text
-PUT /parent/profile/
+Authorization: Bearer <access_token>
 ```
 
-Postman:
+Functionality:
 
-- Method: `PUT`
-- URL: `http://127.0.0.1:5000/parent/profile/`
-- Headers:
+- checks that the authenticated user has a profile
+- checks that a profile picture exists
+- removes the image from Cloudinary
+- sets `profile_picture` to `null`
+
+Success response:
+
+```json
+{
+  "message": "Profile picture removed successfully."
+}
+```
+
+Failure examples:
+
+```json
+{
+  "message": "Profile not found."
+}
+```
+
+```json
+{
+  "message": "Profile picture not found."
+}
+```
+
+### `DELETE /parent/account`
+
+Purpose:
+
+- deletes the authenticated user's entire account after confirmation
+
+Headers:
 
 ```text
-Authorization: Bearer YOUR_ACCESS_TOKEN
+Authorization: Bearer <access_token>
+Content-Type: application/json
 ```
 
-- Body: `form-data`
+Request body:
 
-```text
-first_name          Test
-last_name           Parent
-phone               9876543210
-card_number         4111111111111111
-card_name           Test Parent
-card_type           credit
-dr_no               12A
-floor               2
-street              Main Street
-area                Central Area
-city                Chennai
-state               Tamil Nadu
-country             India
-profile_picture     choose file
+```json
+{
+  "username": "parentdemo",
+  "email": "parentdemo@epost.com",
+  "password": "Parent456"
+}
 ```
 
-Set `profile_picture` field type to `File` in Postman.
+Functionality:
 
-Allowed file types:
+- verifies the logged-in user
+- checks `username`, `email`, and `password`
+- deletes the Cloudinary profile picture if present
+- deletes the user account
+- removes the related profile through cascade delete
 
-```text
-jpg, jpeg, png, webp
+Success response:
+
+```json
+{
+  "message": "Account deleted successfully."
+}
 ```
 
-Uploaded profile pictures are stored in Cloudinary folder:
+Failure examples:
 
-```text
-MAIN/Display_pics
+```json
+{
+  "message": "Username, email, or password is incorrect."
+}
 ```
 
-The profile table stores the Cloudinary `secure_url`.
-
-### Delete Profile
-
-```text
-DELETE /parent/profile/
+```json
+{
+  "message": "User not found."
+}
 ```
 
-Postman headers:
+## Global Error Handling
 
-```text
-Authorization: Bearer YOUR_ACCESS_TOKEN
+Main API routes use centralized error handling in `app/main/api/errors.py`.
+
+Handled cases include:
+
+- Marshmallow validation errors
+- JWT authorization errors
+- invalid tokens
+- expired tokens
+- HTTP exceptions
+- SQLAlchemy database exceptions
+- unexpected server exceptions
+
+Typical error response shapes:
+
+```json
+{
+  "message": "Validation failed.",
+  "errors": {
+    "field_name": [
+      "error message"
+    ]
+  }
+}
 ```
 
-## Database Tables
+```json
+{
+  "message": "Missing Authorization Header"
+}
+```
 
-Current main tables:
+```json
+{
+  "message": "Token has expired."
+}
+```
 
-- `users`
-- `profiles`
-- `alembic_version`
+```json
+{
+  "message": "A database error occurred."
+}
+```
 
-Run migrations:
+```json
+{
+  "message": "An unexpected error occurred."
+}
+```
+
+## Database Migrations
+
+Apply existing migrations:
 
 ```powershell
 flask --app run.py db upgrade
 ```
 
-Create a new migration after model changes:
+Create a new migration:
 
 ```powershell
-flask --app run.py db migrate -m "Migration message"
+flask --app run.py db migrate -m "describe your change"
+```
+
+Apply the new migration:
+
+```powershell
 flask --app run.py db upgrade
 ```
 
-## Deployment Notes
+## Production Notes
 
-For Render Docker deployment:
-
-- Use Docker service.
-- Set environment variables in Render dashboard.
-- Do not upload `.env`.
-- Dockerfile starts the app with Gunicorn.
-
-Health check URL:
-
-```text
-/health
-```
+- Use Gunicorn in Linux and Docker deployments.
+- Use Waitress when you need a production-style Windows server.
+- Keep `/db/schema` protected or disabled in public production environments.
+- Never commit `.env`.
+- Set all secrets through environment variables in production.

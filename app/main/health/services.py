@@ -1,31 +1,22 @@
-from flask import Blueprint, render_template
 from sqlalchemy import text
 from sqlalchemy.sql.compiler import IdentifierPreparer
 
 from app import db
 
 
-health_bp = Blueprint("health", __name__)
 SENSITIVE_COLUMNS = {"password_hash", "card_number"}
 
 
-@health_bp.get("/health")
-def health_check():
-    return {"status": "ok"}
-
-
-@health_bp.get("/db/health")
-def database_health_check():
+def check_database_connection():
     try:
         db.session.execute(text("SELECT 1")).scalar()
     except Exception as error:
         return {"database": "disconnected", "error": str(error)}, 500
 
-    return {"database": "connected"}
+    return {"database": "connected"}, 200
 
 
-@health_bp.get("/db/schema")
-def database_schema():
+def get_database_tables(schema="public"):
     query = text(
         """
         SELECT
@@ -39,8 +30,8 @@ def database_schema():
         ORDER BY table_name, ordinal_position
         """
     )
-    rows = db.session.execute(query, {"schema": "public"}).fetchall()
-    constraints = get_column_constraints()
+    rows = db.session.execute(query, {"schema": schema}).fetchall()
+    constraints = get_column_constraints(schema)
 
     tables = {}
     for row in rows:
@@ -59,6 +50,11 @@ def database_schema():
             }
         )
 
+    load_table_rows(tables)
+    return tables
+
+
+def load_table_rows(tables):
     preparer = IdentifierPreparer(db.engine.dialect)
     for table_name, table in tables.items():
         quoted_table = preparer.quote(table_name)
@@ -72,10 +68,8 @@ def database_schema():
                 }
             )
 
-    return render_template("db_schema.html", tables=tables)
 
-
-def get_column_constraints():
+def get_column_constraints(schema="public"):
     query = text(
         """
         SELECT
@@ -92,7 +86,7 @@ def get_column_constraints():
         ORDER BY tc.table_name, kcu.ordinal_position
         """
     )
-    rows = db.session.execute(query, {"schema": "public"}).fetchall()
+    rows = db.session.execute(query, {"schema": schema}).fetchall()
 
     constraints = {}
     for row in rows:
