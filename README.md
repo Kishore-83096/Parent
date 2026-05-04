@@ -35,6 +35,7 @@ Parent/
 |   |-- main/
 |   |   |-- api/
 |   |   |   |-- errors.py          # Global API error handling
+|   |   |   |-- cache.py           # 5-minute in-memory profile cache
 |   |   |   |-- model.py           # User and Profile models
 |   |   |   |-- routes.py          # Main API routes
 |   |   |   |-- schema.py          # Marshmallow request/response schemas
@@ -585,6 +586,7 @@ Failure examples:
 Purpose:
 
 - returns the authenticated user's profile
+- caches profile data and profile-picture URL for 5 minutes
 
 Headers:
 
@@ -595,7 +597,9 @@ Authorization: Bearer <access_token>
 Functionality:
 
 - reads the user id from JWT
+- returns cached profile data when available
 - fetches the linked `profiles` record
+- refreshes the cache after a database read
 
 Success response:
 
@@ -682,6 +686,7 @@ Functionality:
 - uploads profile pictures to Cloudinary
 - if the uploaded image is over `50 KB`, attempts compression down to `50 KB`
 - if an old profile picture exists, deletes it from Cloudinary before replacing it
+- refreshes the 5-minute profile cache after a successful update
 
 Success response:
 
@@ -742,6 +747,7 @@ Functionality:
 - checks that a profile picture exists
 - removes the image from Cloudinary and confirms deletion
 - sets `profile_picture` to `null`
+- refreshes the 5-minute profile cache after removal
 
 Success response:
 
@@ -795,6 +801,7 @@ Functionality:
 - deletes and confirms the Cloudinary profile picture first, if present
 - deletes the related profile data
 - deletes the user account last
+- clears the profile cache after successful account deletion
 
 Success response:
 

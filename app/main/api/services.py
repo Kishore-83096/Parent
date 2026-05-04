@@ -11,6 +11,7 @@ from marshmallow import ValidationError
 from werkzeug.utils import secure_filename
 
 from app import db
+from app.main.api.cache import get_cached_profile, invalidate_profile_cache, set_cached_profile
 from app.main.api.model import Profile, User
 from app.main.api.schema import (
     ChangePasswordSchema,
@@ -78,11 +79,17 @@ def authenticate_user(payload):
 
 
 def get_user_profile(user_id):
+    cached_profile = get_cached_profile(user_id)
+    if cached_profile is not None:
+        return cached_profile, 200
+
     profile = Profile.query.filter_by(user_id=user_id).first()
     if not profile:
         return {"message": "Profile not found."}, 404
 
-    return profile_schema.dump(profile), 200
+    profile_data = profile_schema.dump(profile)
+    set_cached_profile(user_id, profile_data)
+    return profile_data, 200
 
 
 def update_user_profile(user_id, payload):
@@ -106,7 +113,9 @@ def update_user_profile(user_id, payload):
     db.session.add(data)
     db.session.commit()
 
-    return profile_schema.dump(data), 200
+    profile_data = profile_schema.dump(data)
+    set_cached_profile(user_id, profile_data)
+    return profile_data, 200
 
 
 def get_profile_payload():
@@ -159,6 +168,7 @@ def remove_user_profile_picture(user_id):
     profile.profile_picture = None
     db.session.add(profile)
     db.session.commit()
+    set_cached_profile(user_id, profile_schema.dump(profile))
 
     return {"message": "Profile picture removed successfully."}, 200
 
@@ -190,6 +200,7 @@ def delete_user_account(user_id, payload):
 
     db.session.delete(user)
     db.session.commit()
+    invalidate_profile_cache(user_id)
 
     return {"message": "Account deleted successfully."}, 200
 
