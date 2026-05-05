@@ -288,9 +288,12 @@ def build_saved_contact_result(contact):
 
 
 def build_saved_contact_detail_result(contact):
+    profile = contact.contact_user.profile
+
     return {
         "alias_name": contact.alias_name,
         "blocked": contact.blocked,
+        "profile_picture": profile.profile_picture if profile else None,
     }
 
 
