@@ -292,7 +292,7 @@ There are two groups of routes:
 | `/parent/auth/refresh` | `POST` | Refresh token | None | `{"access_token":"..."}` | missing token, invalid token, expired token |
 | `/parent/auth/change-password` | `POST` | Access token | `{"username","email","current_password","new_password"}` | `{"message":"Password changed successfully."}` | wrong username, email, or current password; same new password; short new password; missing token |
 | `/parent/profile/` | `GET` | Access token | None | profile JSON | profile not found, missing token, invalid token |
-| `/parent/users/search` | `POST` | Access token | `{"account_number":"7XXXXXXXXX"}` | `{"first_name":"...","last_name":"...","username":"..."}` | missing or invalid account number, phone number not in Parrot, missing token |
+| `/parent/users/search` | `POST` | Access token | `{"account_number":"7XXXXXXXXX"}` | `{"first_name":"...","last_name":"...","username":"...","profile_picture":"..."}` | missing or invalid account number, phone number not in Parrot, missing token |
 | `/parent/contacts` | `GET` | Access token | None | `{"contacts":[...]}` | missing token |
 | `/parent/contacts` | `POST` | Access token | `{"account_number":"7XXXXXXXXX","alias_name":"Mom"}` | saved contact JSON | missing or invalid account number, blank alias, own account, phone number not in Parrot, missing token |
 | `/parent/contacts/alias` | `PATCH` | Access token | `{"account_number":"7XXXXXXXXX","alias_name":"Amma"}` | updated contact JSON | contact not found, blank alias, missing token |
@@ -651,7 +651,7 @@ Failure examples:
 Purpose:
 
 - searches the `users` table by exact `account_number`
-- returns first name, last name, and username when the user exists
+- returns first name, last name, username, and profile picture when the user exists
 
 Headers:
 
@@ -673,6 +673,7 @@ Success response:
 {
   "first_name": "Priya",
   "last_name": "Sharma",
+  "profile_picture": "https://res.cloudinary.com/...",
   "username": "parentdemo"
 }
 ```
@@ -716,11 +717,8 @@ Success response:
   "contacts": [
     {
       "alias_name": "Mom",
-      "account_number": "7XXXXXXXXX",
       "blocked": false,
-      "first_name": "Priya",
-      "last_name": "Sharma",
-      "username": "parentdemo"
+      "profile_picture": "https://res.cloudinary.com/..."
     }
   ]
 }
@@ -757,11 +755,8 @@ Success response:
   "message": "Contact saved successfully.",
   "contact": {
     "alias_name": "Mom",
-    "account_number": "7XXXXXXXXX",
     "blocked": false,
-    "first_name": "Priya",
-    "last_name": "Sharma",
-    "username": "parentdemo"
+    "profile_picture": "https://res.cloudinary.com/..."
   }
 }
 ```
@@ -812,11 +807,8 @@ Success response:
   "message": "Contact alias updated successfully.",
   "contact": {
     "alias_name": "Amma",
-    "account_number": "7XXXXXXXXX",
     "blocked": false,
-    "first_name": "Priya",
-    "last_name": "Sharma",
-    "username": "parentdemo"
+    "profile_picture": "https://res.cloudinary.com/..."
   }
 }
 ```
@@ -842,11 +834,8 @@ Success response:
   "message": "Contact blocked successfully.",
   "contact": {
     "alias_name": "Mom",
-    "account_number": "7XXXXXXXXX",
     "blocked": true,
-    "first_name": "Priya",
-    "last_name": "Sharma",
-    "username": "parentdemo"
+    "profile_picture": "https://res.cloudinary.com/..."
   }
 }
 ```
@@ -872,11 +861,8 @@ Success response:
   "message": "Contact unblocked successfully.",
   "contact": {
     "alias_name": "Mom",
-    "account_number": "7XXXXXXXXX",
     "blocked": false,
-    "first_name": "Priya",
-    "last_name": "Sharma",
-    "username": "parentdemo"
+    "profile_picture": "https://res.cloudinary.com/..."
   }
 }
 ```

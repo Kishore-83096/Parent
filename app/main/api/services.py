@@ -120,6 +120,7 @@ def build_person_search_result(user):
     return {
         "first_name": user.profile.first_name if user.profile else None,
         "last_name": user.profile.last_name if user.profile else None,
+        "profile_picture": user.profile.profile_picture if user.profile else None,
         "username": user.username,
     }
 
@@ -264,11 +265,8 @@ def get_saved_contact_by_account_number(owner_user_id, account_number):
 def build_saved_contact_result(contact):
     return {
         "alias_name": contact.alias_name,
-        "account_number": contact.contact_user.account_number,
         "blocked": contact.blocked,
-        "first_name": contact.contact_user.profile.first_name if contact.contact_user.profile else None,
-        "last_name": contact.contact_user.profile.last_name if contact.contact_user.profile else None,
-        "username": contact.contact_user.username,
+        "profile_picture": contact.contact_user.profile.profile_picture if contact.contact_user.profile else None,
     }
 
 
@@ -365,6 +363,7 @@ def remove_user_profile_picture(user_id):
     profile.profile_picture = None
     db.session.add(profile)
     db.session.commit()
+    invalidate_contact_caches_for_contact_user(user_id)
     set_cached_profile(user_id, profile_schema.dump(profile))
 
     return {"message": "Profile picture removed successfully."}, 200
