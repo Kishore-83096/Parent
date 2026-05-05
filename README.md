@@ -730,7 +730,7 @@ Success response:
 
 Purpose:
 
-- returns the saved contact record and non-payment details for one saved contact
+- returns only the saved contact record for one saved contact
 - only works for contacts saved by the authenticated user
 
 Headers:
@@ -745,31 +745,7 @@ Success response:
 {
   "contact": {
     "alias_name": "Mom",
-    "account_number": "7XXXXXXXXX",
-    "blocked": false,
-    "created_at": "2026-05-04T00:00:00+00:00",
-    "updated_at": "2026-05-04T00:00:00+00:00",
-    "user": {
-      "username": "parentdemo",
-      "email": "parentdemo@epost.com",
-      "account_number": "7XXXXXXXXX",
-      "is_premium": false,
-      "created_at": "2026-05-04T00:00:00+00:00"
-    },
-    "profile": {
-      "first_name": "Priya",
-      "last_name": "Sharma",
-      "phone": "+91-9876543210",
-      "profile_picture": "https://res.cloudinary.com/...",
-      "dr_no": "12A",
-      "floor": "3",
-      "street": "Lake View Road",
-      "area": "Indiranagar",
-      "city": "Bengaluru",
-      "state": "Karnataka",
-      "country": "India",
-      "updated_at": "2026-05-04T00:00:00+00:00"
-    }
+    "blocked": false
   }
 }
 ```

@@ -288,41 +288,10 @@ def build_saved_contact_result(contact):
 
 
 def build_saved_contact_detail_result(contact):
-    contact_user = contact.contact_user
-    profile = contact_user.profile
-
     return {
         "alias_name": contact.alias_name,
-        "account_number": contact_user.account_number,
         "blocked": contact.blocked,
-        "created_at": serialize_datetime(contact.created_at),
-        "updated_at": serialize_datetime(contact.updated_at),
-        "user": {
-            "username": contact_user.username,
-            "email": contact_user.email,
-            "account_number": contact_user.account_number,
-            "is_premium": contact_user.is_premium,
-            "created_at": serialize_datetime(contact_user.created_at),
-        },
-        "profile": {
-            "first_name": profile.first_name if profile else None,
-            "last_name": profile.last_name if profile else None,
-            "phone": profile.phone if profile else None,
-            "profile_picture": profile.profile_picture if profile else None,
-            "dr_no": profile.dr_no if profile else None,
-            "floor": profile.floor if profile else None,
-            "street": profile.street if profile else None,
-            "area": profile.area if profile else None,
-            "city": profile.city if profile else None,
-            "state": profile.state if profile else None,
-            "country": profile.country if profile else None,
-            "updated_at": serialize_datetime(profile.updated_at) if profile else None,
-        },
     }
-
-
-def serialize_datetime(value):
-    return value.isoformat() if value else None
 
 
 def get_saved_contacts_query(owner_user_id):
