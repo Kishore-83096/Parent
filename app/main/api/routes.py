@@ -4,12 +4,18 @@ from flask_jwt_extended import create_access_token, create_refresh_token, get_jw
 from app.main.api.schema import user_schema
 from app.main.api.services import (
     authenticate_user,
+    block_saved_contact,
     change_user_password,
+    delete_saved_contact,
     delete_user_account,
     get_profile_payload,
     get_user_profile,
     remove_user_profile_picture,
     register_user,
+    save_searched_contact,
+    search_user_by_account_number,
+    unblock_saved_contact,
+    update_saved_contact_alias,
     update_user_profile,
 )
 
@@ -54,6 +60,42 @@ def change_password():
 @jwt_required()
 def get_profile():
     return get_user_profile(int(get_jwt_identity()))
+
+
+@api_bp.post("/users/search")
+@jwt_required()
+def search_users():
+    return search_user_by_account_number(request.get_json() or {})
+
+
+@api_bp.post("/contacts")
+@jwt_required()
+def save_contact():
+    return save_searched_contact(int(get_jwt_identity()), request.get_json() or {})
+
+
+@api_bp.patch("/contacts/alias")
+@jwt_required()
+def update_contact_alias():
+    return update_saved_contact_alias(int(get_jwt_identity()), request.get_json() or {})
+
+
+@api_bp.post("/contacts/block")
+@jwt_required()
+def block_contact():
+    return block_saved_contact(int(get_jwt_identity()), request.get_json() or {})
+
+
+@api_bp.post("/contacts/unblock")
+@jwt_required()
+def unblock_contact():
+    return unblock_saved_contact(int(get_jwt_identity()), request.get_json() or {})
+
+
+@api_bp.delete("/contacts")
+@jwt_required()
+def delete_contact():
+    return delete_saved_contact(int(get_jwt_identity()), request.get_json() or {})
 
 
 @api_bp.put("/profile/")

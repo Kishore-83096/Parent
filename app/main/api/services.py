@@ -12,13 +12,15 @@ from werkzeug.utils import secure_filename
 
 from app import db
 from app.main.api.cache import get_cached_profile, invalidate_profile_cache, set_cached_profile
-from app.main.api.model import Profile, User
+from app.main.api.model import Contact, Profile, User
 from app.main.api.schema import (
+    AccountNumberSearchSchema,
     ChangePasswordSchema,
     DeleteAccountSchema,
     LoginSchema,
     ProfileSchema,
     RegisterSchema,
+    SaveContactSchema,
     profile_schema,
     user_schema,
 )
@@ -26,6 +28,8 @@ from app.main.api.schema import (
 
 register_schema = RegisterSchema()
 login_schema = LoginSchema()
+account_number_search_schema = AccountNumberSearchSchema()
+save_contact_schema = SaveContactSchema()
 delete_account_schema = DeleteAccountSchema()
 change_password_schema = ChangePasswordSchema()
 profile_update_schema = ProfileSchema(partial=True)
@@ -90,6 +94,158 @@ def get_user_profile(user_id):
     profile_data = profile_schema.dump(profile)
     set_cached_profile(user_id, profile_data)
     return profile_data, 200
+
+
+def search_user_by_account_number(payload):
+    try:
+        data = account_number_search_schema.load(payload or {})
+    except ValidationError as error:
+        return {"errors": error.messages}, 400
+
+    user = User.query.filter_by(account_number=data["account_number"]).first()
+    if not user:
+        return {"message": "Phone number not in Parrot."}, 404
+
+    return build_person_search_result(user), 200
+
+
+def build_person_search_result(user):
+    return {
+        "first_name": user.profile.first_name if user.profile else None,
+        "last_name": user.profile.last_name if user.profile else None,
+        "username": user.username,
+    }
+
+
+def save_searched_contact(owner_user_id, payload):
+    try:
+        data = save_contact_schema.load(payload or {})
+    except ValidationError as error:
+        return {"errors": error.messages}, 400
+
+    owner = db.session.get(User, owner_user_id)
+    if not owner:
+        return {"message": "User not found."}, 404
+
+    contact_user = User.query.filter_by(account_number=data["account_number"]).first()
+    if not contact_user:
+        return {"message": "Phone number not in Parrot."}, 404
+
+    if contact_user.id == owner.id:
+        return {"message": "You cannot save your own account as a contact."}, 400
+
+    alias_name = data["alias_name"].strip()
+    contact = Contact.query.filter_by(owner_user_id=owner.id, contact_user_id=contact_user.id).first()
+    if contact:
+        contact.alias_name = alias_name
+        message = "Contact alias updated successfully."
+        status_code = 200
+    else:
+        contact = Contact(owner_user_id=owner.id, contact_user_id=contact_user.id, alias_name=alias_name)
+        message = "Contact saved successfully."
+        status_code = 201
+
+    db.session.add(contact)
+    db.session.commit()
+
+    return {"message": message, "contact": build_saved_contact_result(contact)}, status_code
+
+
+def update_saved_contact_alias(owner_user_id, payload):
+    try:
+        data = save_contact_schema.load(payload or {})
+    except ValidationError as error:
+        return {"errors": error.messages}, 400
+
+    contact, error_response, status_code = get_saved_contact_by_account_number(
+        owner_user_id,
+        data["account_number"],
+    )
+    if error_response:
+        return error_response, status_code
+
+    contact.alias_name = data["alias_name"].strip()
+    db.session.add(contact)
+    db.session.commit()
+
+    return {
+        "message": "Contact alias updated successfully.",
+        "contact": build_saved_contact_result(contact),
+    }, 200
+
+
+def block_saved_contact(owner_user_id, payload):
+    return set_saved_contact_blocked(owner_user_id, payload, True)
+
+
+def unblock_saved_contact(owner_user_id, payload):
+    return set_saved_contact_blocked(owner_user_id, payload, False)
+
+
+def set_saved_contact_blocked(owner_user_id, payload, blocked):
+    try:
+        data = account_number_search_schema.load(payload or {})
+    except ValidationError as error:
+        return {"errors": error.messages}, 400
+
+    contact, error_response, status_code = get_saved_contact_by_account_number(
+        owner_user_id,
+        data["account_number"],
+    )
+    if error_response:
+        return error_response, status_code
+
+    contact.blocked = blocked
+    db.session.add(contact)
+    db.session.commit()
+
+    message = "Contact blocked successfully." if blocked else "Contact unblocked successfully."
+    return {"message": message, "contact": build_saved_contact_result(contact)}, 200
+
+
+def delete_saved_contact(owner_user_id, payload):
+    try:
+        data = account_number_search_schema.load(payload or {})
+    except ValidationError as error:
+        return {"errors": error.messages}, 400
+
+    contact, error_response, status_code = get_saved_contact_by_account_number(
+        owner_user_id,
+        data["account_number"],
+    )
+    if error_response:
+        return error_response, status_code
+
+    db.session.delete(contact)
+    db.session.commit()
+
+    return {"message": "Contact deleted successfully."}, 200
+
+
+def get_saved_contact_by_account_number(owner_user_id, account_number):
+    owner = db.session.get(User, owner_user_id)
+    if not owner:
+        return None, {"message": "User not found."}, 404
+
+    contact_user = User.query.filter_by(account_number=account_number).first()
+    if not contact_user:
+        return None, {"message": "Phone number not in Parrot."}, 404
+
+    contact = Contact.query.filter_by(owner_user_id=owner.id, contact_user_id=contact_user.id).first()
+    if not contact:
+        return None, {"message": "Contact not found."}, 404
+
+    return contact, None, None
+
+
+def build_saved_contact_result(contact):
+    return {
+        "alias_name": contact.alias_name,
+        "blocked": contact.blocked,
+        "first_name": contact.contact_user.profile.first_name if contact.contact_user.profile else None,
+        "last_name": contact.contact_user.profile.last_name if contact.contact_user.profile else None,
+        "username": contact.contact_user.username,
+    }
 
 
 def update_user_profile(user_id, payload):
@@ -197,6 +353,9 @@ def delete_user_account(user_id, payload):
 
         user.profile = None
         db.session.flush()
+
+    Contact.query.filter_by(owner_user_id=user.id).delete(synchronize_session=False)
+    Contact.query.filter_by(contact_user_id=user.id).delete(synchronize_session=False)
 
     db.session.delete(user)
     db.session.commit()

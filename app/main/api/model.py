@@ -17,6 +17,12 @@ class User(db.Model):
     created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
 
     profile = db.relationship("Profile", back_populates="user", uselist=False, cascade="all, delete-orphan")
+    saved_contacts = db.relationship(
+        "Contact",
+        back_populates="owner",
+        cascade="all, delete-orphan",
+        foreign_keys="Contact.owner_user_id",
+    )
 
     def set_password(self, password):
         self.password_hash = argon2.hash(password)
@@ -52,3 +58,24 @@ class Profile(db.Model):
     )
 
     user = db.relationship("User", back_populates="profile")
+
+
+class Contact(db.Model):
+    __tablename__ = "contacts"
+    __table_args__ = (db.UniqueConstraint("owner_user_id", "contact_user_id", name="uq_contacts_owner_contact"),)
+
+    id = db.Column(db.Integer, primary_key=True)
+    owner_user_id = db.Column(db.Integer, db.ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    contact_user_id = db.Column(db.Integer, db.ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    alias_name = db.Column(db.String(120), nullable=False)
+    blocked = db.Column(db.Boolean, default=False, nullable=False)
+    created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+    updated_at = db.Column(
+        db.DateTime,
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+        nullable=False,
+    )
+
+    owner = db.relationship("User", back_populates="saved_contacts", foreign_keys=[owner_user_id])
+    contact_user = db.relationship("User", foreign_keys=[contact_user_id])

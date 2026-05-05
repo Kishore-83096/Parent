@@ -292,6 +292,12 @@ There are two groups of routes:
 | `/parent/auth/refresh` | `POST` | Refresh token | None | `{"access_token":"..."}` | missing token, invalid token, expired token |
 | `/parent/auth/change-password` | `POST` | Access token | `{"username","email","current_password","new_password"}` | `{"message":"Password changed successfully."}` | wrong username, email, or current password; same new password; short new password; missing token |
 | `/parent/profile/` | `GET` | Access token | None | profile JSON | profile not found, missing token, invalid token |
+| `/parent/users/search` | `POST` | Access token | `{"account_number":"7XXXXXXXXX"}` | `{"first_name":"...","last_name":"...","username":"..."}` | missing or invalid account number, phone number not in Parrot, missing token |
+| `/parent/contacts` | `POST` | Access token | `{"account_number":"7XXXXXXXXX","alias_name":"Mom"}` | saved contact JSON | missing or invalid account number, blank alias, own account, phone number not in Parrot, missing token |
+| `/parent/contacts/alias` | `PATCH` | Access token | `{"account_number":"7XXXXXXXXX","alias_name":"Amma"}` | updated contact JSON | contact not found, blank alias, missing token |
+| `/parent/contacts/block` | `POST` | Access token | `{"account_number":"7XXXXXXXXX"}` | blocked contact JSON | contact not found, phone number not in Parrot, missing token |
+| `/parent/contacts/unblock` | `POST` | Access token | `{"account_number":"7XXXXXXXXX"}` | unblocked contact JSON | contact not found, phone number not in Parrot, missing token |
+| `/parent/contacts` | `DELETE` | Access token | `{"account_number":"7XXXXXXXXX"}` | `{"message":"Contact deleted successfully."}` | contact not found, phone number not in Parrot, missing token |
 | `/parent/profile/` | `PUT` | Access token | JSON or form-data with profile fields and optional `profile_picture` | updated profile JSON | invalid `card_type`, invalid image type, image cannot compress to `50 KB`, user not found, validation errors, missing token |
 | `/parent/profile/picture` | `DELETE` | Access token | None | `{"message":"Profile picture removed successfully."}` | profile not found, profile picture not found, Cloudinary deletion failure, missing token |
 | `/parent/account` | `DELETE` | Access token | `{"username","email","password"}` | `{"message":"Account deleted successfully."}` | wrong username, email, or password; user not found; Cloudinary deletion failure; validation errors; missing token |
@@ -636,6 +642,235 @@ Failure examples:
 ```json
 {
   "message": "Missing Authorization Header"
+}
+```
+
+### `POST /parent/users/search`
+
+Purpose:
+
+- searches the `users` table by exact `account_number`
+- returns first name, last name, and username when the user exists
+
+Headers:
+
+```text
+Authorization: Bearer <access_token>
+```
+
+Request body:
+
+```json
+{
+  "account_number": "7XXXXXXXXX"
+}
+```
+
+Success response:
+
+```json
+{
+  "first_name": "Priya",
+  "last_name": "Sharma",
+  "username": "parentdemo"
+}
+```
+
+Failure examples:
+
+```json
+{
+  "message": "Phone number not in Parrot."
+}
+```
+
+```json
+{
+  "errors": {
+    "account_number": [
+      "Account number must start with 7 and contain exactly 10 digits."
+    ]
+  }
+}
+```
+
+### `POST /parent/contacts`
+
+Purpose:
+
+- saves a searched user as a contact for the authenticated user
+- stores the alias name chosen by the authenticated user
+- updates the alias if the same contact is already saved
+
+Headers:
+
+```text
+Authorization: Bearer <access_token>
+```
+
+Request body:
+
+```json
+{
+  "account_number": "7XXXXXXXXX",
+  "alias_name": "Mom"
+}
+```
+
+Success response:
+
+```json
+{
+  "message": "Contact saved successfully.",
+  "contact": {
+    "alias_name": "Mom",
+    "blocked": false,
+    "first_name": "Priya",
+    "last_name": "Sharma",
+    "username": "parentdemo"
+  }
+}
+```
+
+Failure examples:
+
+```json
+{
+  "message": "Phone number not in Parrot."
+}
+```
+
+```json
+{
+  "message": "You cannot save your own account as a contact."
+}
+```
+
+```json
+{
+  "errors": {
+    "alias_name": [
+      "Alias name cannot be blank."
+    ]
+  }
+}
+```
+
+### `PATCH /parent/contacts/alias`
+
+Purpose:
+
+- updates the alias name for an already saved contact
+
+Request body:
+
+```json
+{
+  "account_number": "7XXXXXXXXX",
+  "alias_name": "Amma"
+}
+```
+
+Success response:
+
+```json
+{
+  "message": "Contact alias updated successfully.",
+  "contact": {
+    "alias_name": "Amma",
+    "blocked": false,
+    "first_name": "Priya",
+    "last_name": "Sharma",
+    "username": "parentdemo"
+  }
+}
+```
+
+### `POST /parent/contacts/block`
+
+Purpose:
+
+- marks a saved contact as blocked
+
+Request body:
+
+```json
+{
+  "account_number": "7XXXXXXXXX"
+}
+```
+
+Success response:
+
+```json
+{
+  "message": "Contact blocked successfully.",
+  "contact": {
+    "alias_name": "Mom",
+    "blocked": true,
+    "first_name": "Priya",
+    "last_name": "Sharma",
+    "username": "parentdemo"
+  }
+}
+```
+
+### `POST /parent/contacts/unblock`
+
+Purpose:
+
+- marks a saved contact as not blocked
+
+Request body:
+
+```json
+{
+  "account_number": "7XXXXXXXXX"
+}
+```
+
+Success response:
+
+```json
+{
+  "message": "Contact unblocked successfully.",
+  "contact": {
+    "alias_name": "Mom",
+    "blocked": false,
+    "first_name": "Priya",
+    "last_name": "Sharma",
+    "username": "parentdemo"
+  }
+}
+```
+
+### `DELETE /parent/contacts`
+
+Purpose:
+
+- deletes a saved contact from the authenticated user's contact list
+
+Request body:
+
+```json
+{
+  "account_number": "7XXXXXXXXX"
+}
+```
+
+Success response:
+
+```json
+{
+  "message": "Contact deleted successfully."
+}
+```
+
+Failure example:
+
+```json
+{
+  "message": "Contact not found."
 }
 ```
 
