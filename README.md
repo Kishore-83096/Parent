@@ -745,6 +745,7 @@ Success response:
 {
   "contact": {
     "alias_name": "Mom",
+    "account_number": "7XXXXXXXXX",
     "blocked": false,
     "profile_picture": "https://res.cloudinary.com/..."
   }
