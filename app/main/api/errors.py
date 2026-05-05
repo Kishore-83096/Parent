@@ -41,7 +41,7 @@ def register_api_error_handlers(app, jwt):
 
     @jwt.expired_token_loader
     def handle_expired_token(jwt_header, jwt_payload):
-        return jsonify({"message": "Token has expired."}), 401
+        return jsonify({"message": "Session has expired. Please login again."}), 401
 
     @jwt.needs_fresh_token_loader
     def handle_fresh_token_required(jwt_header, jwt_payload):
