@@ -9,6 +9,7 @@ from app.main.api.services import (
     delete_saved_contact,
     delete_user_account,
     get_profile_payload,
+    get_saved_contact_detail,
     get_saved_contacts,
     get_user_profile,
     remove_user_profile_picture,
@@ -73,6 +74,12 @@ def search_users():
 @jwt_required()
 def get_contacts():
     return get_saved_contacts(int(get_jwt_identity()))
+
+
+@api_bp.get("/contacts/<account_number>")
+@jwt_required()
+def get_contact_detail(account_number):
+    return get_saved_contact_detail(int(get_jwt_identity()), account_number)
 
 
 @api_bp.post("/contacts")

@@ -294,6 +294,7 @@ There are two groups of routes:
 | `/parent/profile/` | `GET` | Access token | None | profile JSON | profile not found, missing token, invalid token |
 | `/parent/users/search` | `POST` | Access token | `{"account_number":"7XXXXXXXXX"}` | `{"first_name":"...","last_name":"...","username":"...","profile_picture":"..."}` | missing or invalid account number, phone number not in Parrot, missing token |
 | `/parent/contacts` | `GET` | Access token | None | `{"contacts":[...]}` | missing token |
+| `/parent/contacts/<account_number>` | `GET` | Access token | None | `{"contact":{...}}` | missing or invalid account number, contact not found, missing token |
 | `/parent/contacts` | `POST` | Access token | `{"account_number":"7XXXXXXXXX","alias_name":"Mom"}` | saved contact JSON | missing or invalid account number, blank alias, own account, phone number not in Parrot, missing token |
 | `/parent/contacts/alias` | `PATCH` | Access token | `{"account_number":"7XXXXXXXXX","alias_name":"Amma"}` | updated contact JSON | contact not found, blank alias, missing token |
 | `/parent/contacts/block` | `POST` | Access token | `{"account_number":"7XXXXXXXXX"}` | blocked contact JSON | contact not found, phone number not in Parrot, missing token |
@@ -717,10 +718,67 @@ Success response:
   "contacts": [
     {
       "alias_name": "Mom",
+      "account_number": "7XXXXXXXXX",
       "blocked": false,
       "profile_picture": "https://res.cloudinary.com/..."
     }
   ]
+}
+```
+
+### `GET /parent/contacts/<account_number>`
+
+Purpose:
+
+- returns the saved contact record and non-payment details for one saved contact
+- only works for contacts saved by the authenticated user
+
+Headers:
+
+```text
+Authorization: Bearer <access_token>
+```
+
+Success response:
+
+```json
+{
+  "contact": {
+    "alias_name": "Mom",
+    "account_number": "7XXXXXXXXX",
+    "blocked": false,
+    "created_at": "2026-05-04T00:00:00+00:00",
+    "updated_at": "2026-05-04T00:00:00+00:00",
+    "user": {
+      "username": "parentdemo",
+      "email": "parentdemo@epost.com",
+      "account_number": "7XXXXXXXXX",
+      "is_premium": false,
+      "created_at": "2026-05-04T00:00:00+00:00"
+    },
+    "profile": {
+      "first_name": "Priya",
+      "last_name": "Sharma",
+      "phone": "+91-9876543210",
+      "profile_picture": "https://res.cloudinary.com/...",
+      "dr_no": "12A",
+      "floor": "3",
+      "street": "Lake View Road",
+      "area": "Indiranagar",
+      "city": "Bengaluru",
+      "state": "Karnataka",
+      "country": "India",
+      "updated_at": "2026-05-04T00:00:00+00:00"
+    }
+  }
+}
+```
+
+Failure examples:
+
+```json
+{
+  "message": "Contact not found."
 }
 ```
 
@@ -755,6 +813,7 @@ Success response:
   "message": "Contact saved successfully.",
   "contact": {
     "alias_name": "Mom",
+    "account_number": "7XXXXXXXXX",
     "blocked": false,
     "profile_picture": "https://res.cloudinary.com/..."
   }
@@ -807,6 +866,7 @@ Success response:
   "message": "Contact alias updated successfully.",
   "contact": {
     "alias_name": "Amma",
+    "account_number": "7XXXXXXXXX",
     "blocked": false,
     "profile_picture": "https://res.cloudinary.com/..."
   }
@@ -834,6 +894,7 @@ Success response:
   "message": "Contact blocked successfully.",
   "contact": {
     "alias_name": "Mom",
+    "account_number": "7XXXXXXXXX",
     "blocked": true,
     "profile_picture": "https://res.cloudinary.com/..."
   }
@@ -861,6 +922,7 @@ Success response:
   "message": "Contact unblocked successfully.",
   "contact": {
     "alias_name": "Mom",
+    "account_number": "7XXXXXXXXX",
     "blocked": false,
     "profile_picture": "https://res.cloudinary.com/..."
   }
