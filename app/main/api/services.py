@@ -11,7 +11,14 @@ from marshmallow import ValidationError
 from werkzeug.utils import secure_filename
 
 from app import db
-from app.main.api.cache import get_cached_profile, invalidate_profile_cache, set_cached_profile
+from app.main.api.cache import (
+    get_cached_contacts,
+    get_cached_profile,
+    invalidate_contacts_cache,
+    invalidate_profile_cache,
+    set_cached_contacts,
+    set_cached_profile,
+)
 from app.main.api.model import Contact, Profile, User
 from app.main.api.schema import (
     AccountNumberSearchSchema,
@@ -117,6 +124,18 @@ def build_person_search_result(user):
     }
 
 
+def get_saved_contacts(owner_user_id):
+    cached_contacts = get_cached_contacts(owner_user_id)
+    if cached_contacts is not None:
+        return {"contacts": cached_contacts}, 200
+
+    owner = db.session.get(User, owner_user_id)
+    if not owner:
+        return {"message": "User not found."}, 404
+
+    return {"contacts": refresh_saved_contacts_cache(owner.id)}, 200
+
+
 def save_searched_contact(owner_user_id, payload):
     try:
         data = save_contact_schema.load(payload or {})
@@ -147,6 +166,7 @@ def save_searched_contact(owner_user_id, payload):
 
     db.session.add(contact)
     db.session.commit()
+    refresh_saved_contacts_cache(owner.id)
 
     return {"message": message, "contact": build_saved_contact_result(contact)}, status_code
 
@@ -167,6 +187,7 @@ def update_saved_contact_alias(owner_user_id, payload):
     contact.alias_name = data["alias_name"].strip()
     db.session.add(contact)
     db.session.commit()
+    refresh_saved_contacts_cache(owner_user_id)
 
     return {
         "message": "Contact alias updated successfully.",
@@ -198,6 +219,7 @@ def set_saved_contact_blocked(owner_user_id, payload, blocked):
     contact.blocked = blocked
     db.session.add(contact)
     db.session.commit()
+    refresh_saved_contacts_cache(owner_user_id)
 
     message = "Contact blocked successfully." if blocked else "Contact unblocked successfully."
     return {"message": message, "contact": build_saved_contact_result(contact)}, 200
@@ -218,6 +240,7 @@ def delete_saved_contact(owner_user_id, payload):
 
     db.session.delete(contact)
     db.session.commit()
+    refresh_saved_contacts_cache(owner_user_id)
 
     return {"message": "Contact deleted successfully."}, 200
 
@@ -241,11 +264,28 @@ def get_saved_contact_by_account_number(owner_user_id, account_number):
 def build_saved_contact_result(contact):
     return {
         "alias_name": contact.alias_name,
+        "account_number": contact.contact_user.account_number,
         "blocked": contact.blocked,
         "first_name": contact.contact_user.profile.first_name if contact.contact_user.profile else None,
         "last_name": contact.contact_user.profile.last_name if contact.contact_user.profile else None,
         "username": contact.contact_user.username,
     }
+
+
+def get_saved_contacts_query(owner_user_id):
+    return Contact.query.filter_by(owner_user_id=owner_user_id).order_by(Contact.alias_name.asc(), Contact.id.asc())
+
+
+def refresh_saved_contacts_cache(owner_user_id):
+    contacts_data = [build_saved_contact_result(contact) for contact in get_saved_contacts_query(owner_user_id).all()]
+    set_cached_contacts(owner_user_id, contacts_data)
+    return contacts_data
+
+
+def invalidate_contact_caches_for_contact_user(contact_user_id):
+    owner_ids = db.session.query(Contact.owner_user_id).filter_by(contact_user_id=contact_user_id).distinct().all()
+    for owner_id, in owner_ids:
+        invalidate_contacts_cache(owner_id)
 
 
 def update_user_profile(user_id, payload):
@@ -268,6 +308,7 @@ def update_user_profile(user_id, payload):
 
     db.session.add(data)
     db.session.commit()
+    invalidate_contact_caches_for_contact_user(user_id)
 
     profile_data = profile_schema.dump(data)
     set_cached_profile(user_id, profile_data)
@@ -354,12 +395,23 @@ def delete_user_account(user_id, payload):
         user.profile = None
         db.session.flush()
 
+    affected_contact_owner_ids = [
+        owner_id
+        for owner_id, in db.session.query(Contact.owner_user_id)
+        .filter_by(contact_user_id=user.id)
+        .distinct()
+        .all()
+    ]
+
     Contact.query.filter_by(owner_user_id=user.id).delete(synchronize_session=False)
     Contact.query.filter_by(contact_user_id=user.id).delete(synchronize_session=False)
 
     db.session.delete(user)
     db.session.commit()
     invalidate_profile_cache(user_id)
+    invalidate_contacts_cache(user_id)
+    for owner_id in affected_contact_owner_ids:
+        invalidate_contacts_cache(owner_id)
 
     return {"message": "Account deleted successfully."}, 200
 

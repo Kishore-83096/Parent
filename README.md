@@ -293,6 +293,7 @@ There are two groups of routes:
 | `/parent/auth/change-password` | `POST` | Access token | `{"username","email","current_password","new_password"}` | `{"message":"Password changed successfully."}` | wrong username, email, or current password; same new password; short new password; missing token |
 | `/parent/profile/` | `GET` | Access token | None | profile JSON | profile not found, missing token, invalid token |
 | `/parent/users/search` | `POST` | Access token | `{"account_number":"7XXXXXXXXX"}` | `{"first_name":"...","last_name":"...","username":"..."}` | missing or invalid account number, phone number not in Parrot, missing token |
+| `/parent/contacts` | `GET` | Access token | None | `{"contacts":[...]}` | missing token |
 | `/parent/contacts` | `POST` | Access token | `{"account_number":"7XXXXXXXXX","alias_name":"Mom"}` | saved contact JSON | missing or invalid account number, blank alias, own account, phone number not in Parrot, missing token |
 | `/parent/contacts/alias` | `PATCH` | Access token | `{"account_number":"7XXXXXXXXX","alias_name":"Amma"}` | updated contact JSON | contact not found, blank alias, missing token |
 | `/parent/contacts/block` | `POST` | Access token | `{"account_number":"7XXXXXXXXX"}` | blocked contact JSON | contact not found, phone number not in Parrot, missing token |
@@ -694,6 +695,37 @@ Failure examples:
 }
 ```
 
+### `GET /parent/contacts`
+
+Purpose:
+
+- returns the authenticated user's saved contacts
+- caches saved contacts for 5 minutes
+- returns refreshed cache data after contact add, alias update, block, unblock, or delete
+
+Headers:
+
+```text
+Authorization: Bearer <access_token>
+```
+
+Success response:
+
+```json
+{
+  "contacts": [
+    {
+      "alias_name": "Mom",
+      "account_number": "7XXXXXXXXX",
+      "blocked": false,
+      "first_name": "Priya",
+      "last_name": "Sharma",
+      "username": "parentdemo"
+    }
+  ]
+}
+```
+
 ### `POST /parent/contacts`
 
 Purpose:
@@ -701,6 +733,7 @@ Purpose:
 - saves a searched user as a contact for the authenticated user
 - stores the alias name chosen by the authenticated user
 - updates the alias if the same contact is already saved
+- refreshes the saved contacts cache after saving
 
 Headers:
 
@@ -724,6 +757,7 @@ Success response:
   "message": "Contact saved successfully.",
   "contact": {
     "alias_name": "Mom",
+    "account_number": "7XXXXXXXXX",
     "blocked": false,
     "first_name": "Priya",
     "last_name": "Sharma",
@@ -778,6 +812,7 @@ Success response:
   "message": "Contact alias updated successfully.",
   "contact": {
     "alias_name": "Amma",
+    "account_number": "7XXXXXXXXX",
     "blocked": false,
     "first_name": "Priya",
     "last_name": "Sharma",
@@ -807,6 +842,7 @@ Success response:
   "message": "Contact blocked successfully.",
   "contact": {
     "alias_name": "Mom",
+    "account_number": "7XXXXXXXXX",
     "blocked": true,
     "first_name": "Priya",
     "last_name": "Sharma",
@@ -836,6 +872,7 @@ Success response:
   "message": "Contact unblocked successfully.",
   "contact": {
     "alias_name": "Mom",
+    "account_number": "7XXXXXXXXX",
     "blocked": false,
     "first_name": "Priya",
     "last_name": "Sharma",

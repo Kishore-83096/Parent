@@ -8,6 +8,7 @@ PROFILE_CACHE_TTL_SECONDS = 5 * 60
 _lock = RLock()
 _profile_cache = {}
 _profile_picture_cache = {}
+_contacts_cache = {}
 
 
 def get_cached_profile(user_id):
@@ -31,6 +32,19 @@ def invalidate_profile_cache(user_id):
     with _lock:
         _profile_cache.pop(user_id, None)
         _profile_picture_cache.pop(user_id, None)
+
+
+def get_cached_contacts(user_id):
+    return _get(_contacts_cache, user_id)
+
+
+def set_cached_contacts(user_id, contacts_data):
+    _set(_contacts_cache, user_id, contacts_data)
+
+
+def invalidate_contacts_cache(user_id):
+    with _lock:
+        _contacts_cache.pop(user_id, None)
 
 
 def _get(cache, key):
