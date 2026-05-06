@@ -1,3 +1,4 @@
+from datetime import datetime, timedelta, timezone
 from io import BytesIO
 from secrets import randbelow
 from urllib.parse import urlparse
@@ -5,6 +6,7 @@ from uuid import uuid4
 
 import cloudinary
 import cloudinary.uploader
+import jwt
 from PIL import Image
 from flask import current_app, request
 from marshmallow import ValidationError
@@ -89,6 +91,34 @@ def authenticate_user(payload):
         return {"message": "Invalid username or password."}, 401
 
     return user, 200
+
+
+def create_messaging_token(user_id):
+    user = db.session.get(User, user_id)
+    if not user:
+        return {"message": "User not found."}, 404
+
+    secret = current_app.config.get("MESSAGING_JWT_SECRET") or ""
+    if not secret:
+        return {"message": "Messaging token secret is not configured."}, 500
+
+    now = datetime.now(timezone.utc)
+    expires_at = now + timedelta(seconds=current_app.config["MESSAGING_TOKEN_TTL_SECONDS"])
+    payload = {
+        "sub": str(user.id),
+        "user_id": user.id,
+        "account_number": user.account_number,
+        "iss": current_app.config["MESSAGING_JWT_ISSUER"],
+        "aud": current_app.config["MESSAGING_JWT_AUDIENCE"],
+        "iat": now,
+        "exp": expires_at,
+    }
+
+    return {
+        "messaging_token": jwt.encode(payload, secret, algorithm="HS256"),
+        "token_type": "Bearer",
+        "expires_in": current_app.config["MESSAGING_TOKEN_TTL_SECONDS"],
+    }, 200
 
 
 def get_user_profile(user_id):

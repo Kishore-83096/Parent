@@ -9,6 +9,7 @@ from app.main.api.services import (
     authorize_messaging_pair,
     block_saved_contact,
     change_user_password,
+    create_messaging_token,
     delete_saved_contact,
     delete_user_account,
     get_profile_payload,
@@ -68,6 +69,12 @@ def login():
 def refresh():
     user_id = get_jwt_identity()
     return {"access_token": create_access_token(identity=user_id)}
+
+
+@api_bp.post("/messaging/token")
+@jwt_required()
+def messaging_token():
+    return create_messaging_token(int(get_jwt_identity()))
 
 
 @api_bp.post("/auth/change-password")
