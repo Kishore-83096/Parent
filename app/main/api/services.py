@@ -25,6 +25,7 @@ from app.main.api.schema import (
     ChangePasswordSchema,
     DeleteAccountSchema,
     LoginSchema,
+    MessagingAuthorizationSchema,
     ProfileSchema,
     RegisterSchema,
     SaveContactSchema,
@@ -37,6 +38,7 @@ register_schema = RegisterSchema()
 login_schema = LoginSchema()
 account_number_search_schema = AccountNumberSearchSchema()
 save_contact_schema = SaveContactSchema()
+messaging_authorization_schema = MessagingAuthorizationSchema()
 delete_account_schema = DeleteAccountSchema()
 change_password_schema = ChangePasswordSchema()
 profile_update_schema = ProfileSchema(partial=True)
@@ -260,6 +262,77 @@ def delete_saved_contact(owner_user_id, payload):
     refresh_saved_contacts_cache(owner_user_id)
 
     return {"message": "Contact deleted successfully."}, 200
+
+
+def authorize_messaging_pair(payload):
+    try:
+        data = messaging_authorization_schema.load(payload or {})
+    except ValidationError as error:
+        return {"allowed": False, "errors": error.messages}, 400
+
+    sender = db.session.get(User, data["sender_user_id"])
+    if not sender:
+        return {
+            "allowed": False,
+            "reason": "sender_not_found",
+            "message": "Sender user not found.",
+        }, 404
+
+    recipient = User.query.filter_by(account_number=data["recipient_account_number"]).first()
+    if not recipient:
+        return {
+            "allowed": False,
+            "reason": "recipient_not_found",
+            "message": "Recipient account number is not in Parrot.",
+        }, 404
+
+    if recipient.id == sender.id:
+        return {
+            "allowed": False,
+            "reason": "self_message",
+            "message": "You cannot message your own account.",
+        }, 400
+
+    sender_contact = Contact.query.filter_by(
+        owner_user_id=sender.id,
+        contact_user_id=recipient.id,
+    ).first()
+    if not sender_contact:
+        return {
+            "allowed": False,
+            "reason": "contact_not_saved",
+            "message": "Recipient is not saved in sender contacts.",
+        }, 403
+
+    if sender_contact.blocked:
+        return {
+            "allowed": False,
+            "reason": "sender_blocked_recipient",
+            "message": "Sender has blocked this recipient.",
+        }, 403
+
+    recipient_contact = Contact.query.filter_by(
+        owner_user_id=recipient.id,
+        contact_user_id=sender.id,
+    ).first()
+    if recipient_contact and recipient_contact.blocked:
+        return {
+            "allowed": False,
+            "reason": "recipient_blocked_sender",
+            "message": "Recipient has blocked this sender.",
+        }, 403
+
+    return {
+        "allowed": True,
+        "sender_user_id": sender.id,
+        "sender_account_number": sender.account_number,
+        "recipient_user_id": recipient.id,
+        "recipient_account_number": recipient.account_number,
+        "contact": {
+            "alias_name": sender_contact.alias_name,
+            "blocked": sender_contact.blocked,
+        },
+    }, 200
 
 
 def get_saved_contact_by_account_number(owner_user_id, account_number):

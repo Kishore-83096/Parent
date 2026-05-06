@@ -1,9 +1,12 @@
-from flask import Blueprint, request
+from hmac import compare_digest
+
+from flask import Blueprint, current_app, request
 from flask_jwt_extended import create_access_token, create_refresh_token, get_jwt_identity, jwt_required
 
 from app.main.api.schema import user_schema
 from app.main.api.services import (
     authenticate_user,
+    authorize_messaging_pair,
     block_saved_contact,
     change_user_password,
     delete_saved_contact,
@@ -23,6 +26,21 @@ from app.main.api.services import (
 
 
 api_bp = Blueprint("parent_api", __name__)
+
+
+def is_internal_service_request():
+    expected_token = current_app.config.get("INTERNAL_SERVICE_TOKEN") or ""
+    provided_token = request.headers.get("X-Internal-Service-Token", "")
+
+    return bool(expected_token) and compare_digest(provided_token, expected_token)
+
+
+@api_bp.post("/internal/messaging/authorize")
+def authorize_messaging():
+    if not is_internal_service_request():
+        return {"message": "Unauthorized internal service request."}, 401
+
+    return authorize_messaging_pair(request.get_json() or {})
 
 
 @api_bp.post("/auth/register")

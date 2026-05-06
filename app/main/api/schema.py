@@ -77,6 +77,24 @@ class SaveContactSchema(AccountNumberSearchSchema):
     )
 
 
+class MessagingAuthorizationSchema(ma.Schema):
+    sender_user_id = fields.Integer(
+        required=True,
+        strict=True,
+        validate=validate.Range(min=1),
+    )
+    recipient_account_number = fields.String(
+        required=True,
+        validate=[
+            validate.Length(equal=10),
+            validate.Regexp(
+                r"^7\d{9}$",
+                error="Recipient account number must start with 7 and contain exactly 10 digits.",
+            ),
+        ],
+    )
+
+
 class DeleteAccountSchema(ma.Schema):
     username = fields.String(required=True)
     email = fields.Email(required=True)
