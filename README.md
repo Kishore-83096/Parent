@@ -6,7 +6,9 @@ The PARROT Parent Service is a Flask-based backend for parent account management
 
 - Creates parent accounts
 - Logs users in with JWT access and refresh tokens
+- Issues short-lived Messenger JWTs for the Messenger service
 - Stores parent profile data
+- Authorizes Messenger service requests against saved-contact and block rules
 - Uploads, replaces, compresses, and removes profile pictures with Cloudinary
 - Lets authenticated users change passwords securely
 - Lets authenticated users delete their account only after identity verification
@@ -75,6 +77,11 @@ JWT_SECRET_KEY=your_jwt_secret_key
 DATABASE_URL=sqlite:///parent.db
 CLOUDINARY_URL=your_cloudinary_url
 CLOUDINARY_PROFILE_FOLDER=MAIN/Display_pics
+INTERNAL_SERVICE_TOKEN=shared_internal_service_token
+MESSAGING_JWT_SECRET=shared_messenger_jwt_secret
+MESSAGING_JWT_ISSUER=parrot-parent
+MESSAGING_JWT_AUDIENCE=parrot-messenger
+MESSAGING_TOKEN_TTL_SECONDS=300
 PORT=5000
 WEB_CONCURRENCY=2
 GUNICORN_TIMEOUT=120
@@ -85,6 +92,8 @@ Important notes:
 - `DATABASE_URL` can point to SQLite for local development or PostgreSQL in production.
 - `CLOUDINARY_URL` is required for profile picture uploads.
 - `CLOUDINARY_PROFILE_FOLDER` controls where images are stored in Cloudinary.
+- `INTERNAL_SERVICE_TOKEN` must match the Messenger service token for internal APIs.
+- `MESSAGING_JWT_SECRET`, issuer, and audience must match Messenger settings.
 
 ## Running Locally
 
@@ -290,6 +299,8 @@ There are two groups of routes:
 | `/parent/auth/register` | `POST` | No | `{"username","password","confirm_password","first_name","last_name"}` | `{"message":"User registered successfully.","user":{...}}` | password mismatch, short password, invalid username, duplicate username, duplicate email |
 | `/parent/auth/login` | `POST` | No | `{"username","password"}` | `{"access_token":"...","refresh_token":"...","user":{...}}` | invalid username or password, validation errors |
 | `/parent/auth/refresh` | `POST` | Refresh token | None | `{"access_token":"..."}` | missing token, invalid token, expired token |
+| `/parent/messaging/token` | `POST` | Access token | None | `{"messaging_token":"...","token_type":"Bearer","expires_in":300}` | missing token, invalid token, missing messaging secret |
+| `/parent/internal/messaging/authorize` | `POST` | Internal service token | `{"sender_user_id":5,"recipient_account_number":"7XXXXXXXXX"}` | `{"allowed":true,...}` | missing internal token, sender or recipient not found, contact not saved, blocked, self-message |
 | `/parent/auth/change-password` | `POST` | Access token | `{"username","email","current_password","new_password"}` | `{"message":"Password changed successfully."}` | wrong username, email, or current password; same new password; short new password; missing token |
 | `/parent/profile/` | `GET` | Access token | None | profile JSON | profile not found, missing token, invalid token |
 | `/parent/users/search` | `POST` | Access token | `{"account_number":"7XXXXXXXXX"}` | `{"first_name":"...","last_name":"...","username":"...","profile_picture":"..."}` | missing or invalid account number, phone number not in Parrot, missing token |
@@ -526,6 +537,64 @@ Failure examples:
   "message": "Token has expired."
 }
 ```
+
+### `POST /parent/messaging/token`
+
+Purpose:
+
+- creates a short-lived Messenger JWT for the authenticated user
+- lets Messenger derive the sender from a token instead of trusting `sender_user_id` from a client request
+
+Headers:
+
+```text
+Authorization: Bearer <parent_access_token>
+```
+
+Success response:
+
+```json
+{
+  "messaging_token": "<jwt>",
+  "token_type": "Bearer",
+  "expires_in": 300
+}
+```
+
+### `POST /parent/internal/messaging/authorize`
+
+Purpose:
+
+- internal-only endpoint used by Messenger before allowing a message
+- validates sender, recipient, saved-contact relationship, and block state
+
+Headers:
+
+```text
+X-Internal-Service-Token: <shared_internal_service_token>
+```
+
+Request body:
+
+```json
+{
+  "sender_user_id": 5,
+  "recipient_account_number": "7941066772"
+}
+```
+
+Allowed response:
+
+```json
+{
+  "allowed": true,
+  "sender_user_id": 5,
+  "recipient_user_id": 4,
+  "recipient_account_number": "7941066772"
+}
+```
+
+Deny responses include `allowed: false` with a `reason`, such as `contact_not_saved`, `sender_blocked_recipient`, `recipient_blocked_sender`, or `self_message`.
 
 ### `POST /parent/auth/change-password`
 
