@@ -323,6 +323,12 @@ def authorize_messaging_pair(payload):
             "message": "You cannot message your own account.",
         }, 400
 
+    recipient_contact = Contact.query.filter_by(
+        owner_user_id=recipient.id,
+        contact_user_id=sender.id,
+    ).first()
+    recipient_blocked_sender = bool(recipient_contact and recipient_contact.blocked)
+
     sender_contact = Contact.query.filter_by(
         owner_user_id=sender.id,
         contact_user_id=recipient.id,
@@ -332,24 +338,13 @@ def authorize_messaging_pair(payload):
             "allowed": False,
             "reason": "contact_not_saved",
             "message": "Recipient is not saved in sender contacts.",
-        }, 403
-
-    if sender_contact.blocked:
-        return {
-            "allowed": False,
-            "reason": "sender_blocked_recipient",
-            "message": "Sender has blocked this recipient.",
-        }, 403
-
-    recipient_contact = Contact.query.filter_by(
-        owner_user_id=recipient.id,
-        contact_user_id=sender.id,
-    ).first()
-    if recipient_contact and recipient_contact.blocked:
-        return {
-            "allowed": False,
-            "reason": "recipient_blocked_sender",
-            "message": "Recipient has blocked this sender.",
+            "recipient_user_id": recipient.id,
+            "recipient_account_number": recipient.account_number,
+            "delivery_blocked": recipient_blocked_sender,
+            "block_context": {
+                "sender_blocked_recipient": False,
+                "recipient_blocked_sender": recipient_blocked_sender,
+            },
         }, 403
 
     return {
@@ -358,6 +353,11 @@ def authorize_messaging_pair(payload):
         "sender_account_number": sender.account_number,
         "recipient_user_id": recipient.id,
         "recipient_account_number": recipient.account_number,
+        "delivery_blocked": recipient_blocked_sender,
+        "block_context": {
+            "sender_blocked_recipient": sender_contact.blocked,
+            "recipient_blocked_sender": recipient_blocked_sender,
+        },
         "contact": {
             "alias_name": sender_contact.alias_name,
             "blocked": sender_contact.blocked,

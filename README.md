@@ -594,7 +594,7 @@ Allowed response:
 }
 ```
 
-Deny responses include `allowed: false` with a `reason`, such as `contact_not_saved`, `sender_blocked_recipient`, `recipient_blocked_sender`, or `self_message`.
+Block state does not deny saved-contact sends. Allowed responses include internal `delivery_blocked` and `block_context` fields so Messenger can keep recipient-blocked messages at `sent` without delivering them. Deny responses include `allowed: false` with a `reason`, such as `contact_not_saved` or `self_message`.
 
 ### `POST /parent/auth/change-password`
 
