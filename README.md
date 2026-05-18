@@ -1270,3 +1270,45 @@ flask --app run.py db upgrade
 - Keep `/db/schema` protected or disabled in public production environments.
 - Never commit `.env`.
 - Set all secrets through environment variables in production.
+
+## Current Messenger And E2EE Integration Notes
+
+The Parent service owns account identity and contact policy. It does not store encrypted message keys, linked-device keys, recovery keys, or message ciphertext. Those records live in the Messenger service.
+
+Parent is still required for encrypted messaging because it issues Messenger JWTs and authorizes message sends.
+
+### Parent Responsibilities
+
+- Authenticate the user with Parent access and refresh JWTs.
+- Return the current user id and account number to React.
+- Issue short-lived Messenger JWTs from `POST /parent/messaging/token`.
+- Authorize Messenger sends through `POST /parent/internal/messaging/authorize`.
+- Enforce contact and block rules used by Messenger before delivery.
+
+### Messenger JWT Contract
+
+`POST /parent/messaging/token` signs a token with:
+
+```json
+{
+  "sub": "1",
+  "user_id": 1,
+  "account_number": "7XXXXXXXXX",
+  "iss": "parrot-parent",
+  "aud": "parrot-messenger",
+  "iat": 1710000000,
+  "exp": 1710000300
+}
+```
+
+Messenger validates the same `MESSAGING_JWT_SECRET`, issuer, and audience. React clears stale Messenger tokens on account login and rejects any stored Messenger token whose user id does not match the current Parent user.
+
+### Device And Recovery Boundary
+
+- Linked devices are registered in Messenger, not Parent.
+- Default-device permissions are enforced by Messenger with signed Ed25519 device actions.
+- The recovery key is created and verified in React.
+- Parent never receives the recovery key.
+- Messenger stores only encrypted recovery-backup ciphertext and metadata.
+
+When changing Parent auth/session behavior, make sure React can still call `POST /parent/messaging/token` immediately after login, because encrypted-message setup depends on that token.
