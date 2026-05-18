@@ -1310,5 +1310,6 @@ Messenger validates the same `MESSAGING_JWT_SECRET`, issuer, and audience. React
 - The recovery key is created and verified in React.
 - Parent never receives the recovery key.
 - Messenger stores only encrypted recovery-backup ciphertext and metadata.
+- Parent logout only clears Parent auth state. React also asks Messenger to process the current signed device logout: non-default device rows and local E2EE state are removed, while the default device row and local E2EE state are retained.
 
 When changing Parent auth/session behavior, make sure React can still call `POST /parent/messaging/token` immediately after login, because encrypted-message setup depends on that token.
