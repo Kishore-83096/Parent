@@ -1273,7 +1273,7 @@ flask --app run.py db upgrade
 
 ## Current Messenger And E2EE Integration Notes
 
-The Parent service owns account identity and contact policy. It does not store encrypted message keys, linked-device keys, recovery keys, or message ciphertext. Those records live in the Messenger service.
+The Parent service owns account identity and contact policy. It does not store encrypted message keys, linked-device keys, default-device password hashes, recovery keys, or message ciphertext. Those records live in the Messenger service.
 
 Parent is still required for encrypted messaging because it issues Messenger JWTs and authorizes message sends.
 
@@ -1306,9 +1306,9 @@ Messenger validates the same `MESSAGING_JWT_SECRET`, issuer, and audience. React
 ### Device And Recovery Boundary
 
 - Linked devices are registered in Messenger, not Parent.
-- Default-device permissions are enforced by Messenger with signed Ed25519 device actions.
+- Default-device permissions and default-password updates are enforced by Messenger with signed Ed25519 device actions plus a Messenger-owned default-device password hash.
 - The recovery key is created and verified in React.
-- Parent never receives the recovery key.
+- Parent never receives the recovery key or default-device password.
 - Messenger stores only encrypted recovery-backup ciphertext and metadata.
 - Parent logout only clears Parent auth state. React also asks Messenger to process the current signed device logout: non-default device rows and local E2EE state are removed, while the default device row and local E2EE state are retained.
 
