@@ -295,7 +295,7 @@ There are two groups of routes:
 | `/` | `GET` | No | None | `{"message": "Hai to the Parent service of Parrot."}` | Usually none unless server error |
 | `/health` | `GET` | No | None | `{"status": "ok"}` | Usually none unless server error |
 | `/db/health` | `GET` | No | None | `{"database": "connected"}` | `{"database": "disconnected", "error": "..."}` |
-| `/db/schema` | `GET` | No | None | HTML schema viewer page | Server or database errors |
+| `/db/schema` | `GET` | Local development only | None | HTML schema viewer page | `404` outside local development; server or database errors |
 | `/parent/auth/register` | `POST` | No | `{"username","password","confirm_password","first_name","last_name"}` | `{"message":"User registered successfully.","user":{...}}` | password mismatch, short password, invalid username, duplicate username, duplicate email |
 | `/parent/auth/login` | `POST` | No | `{"username","password"}` | `{"access_token":"...","refresh_token":"...","user":{...}}` | invalid username or password, validation errors |
 | `/parent/auth/refresh` | `POST` | Refresh token | None | `{"access_token":"..."}` | missing token, invalid token, expired token |
@@ -317,7 +317,7 @@ There are two groups of routes:
 
 ## Response Style
 
-The service returns JSON for main APIs and error handling. The only HTML route is `GET /db/schema`.
+The service returns JSON for main APIs and error handling. The only HTML route is `GET /db/schema`, and it is available only during local development.
 
 Common response patterns:
 
@@ -392,7 +392,8 @@ Response type:
 Warning:
 
 - this route exposes schema and row data
-- keep it for local/admin/test use only
+- it is enabled only by the development config
+- it returns `404` outside local loopback requests or outside development mode
 
 ## Main API Routes
 
@@ -1267,7 +1268,7 @@ flask --app run.py db upgrade
 
 - Use Gunicorn in Linux and Docker deployments.
 - Use Waitress when you need a production-style Windows server.
-- Keep `/db/schema` protected or disabled in public production environments.
+- `/db/schema` is disabled in production and only responds to local development requests.
 - Never commit `.env`.
 - Set all secrets through environment variables in production.
 

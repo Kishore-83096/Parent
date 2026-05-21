@@ -44,12 +44,14 @@ class Config:
     MESSAGING_JWT_AUDIENCE = os.getenv("MESSAGING_JWT_AUDIENCE", "parrot-messenger")
     MESSAGING_TOKEN_TTL_SECONDS = int(os.getenv("MESSAGING_TOKEN_TTL_SECONDS", 300))
     MAX_CONTENT_LENGTH = int(os.getenv("MAX_CONTENT_LENGTH", 5 * 1024 * 1024))
+    ENABLE_DB_SCHEMA_ROUTE = False
     JWT_ACCESS_TOKEN_EXPIRES = timedelta(hours=1)
     JWT_REFRESH_TOKEN_EXPIRES = timedelta(days=30)
 
 
 class DevelopmentConfig(Config):
     DEBUG = True
+    ENABLE_DB_SCHEMA_ROUTE = True
 
 
 class ProductionConfig(Config):
