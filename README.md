@@ -8,7 +8,7 @@ The PARROT Parent Service is a Flask-based backend for parent account management
 - Logs users in with JWT access and refresh tokens
 - Issues short-lived Messenger JWTs for the Messenger service
 - Stores parent profile data
-- Authorizes Messenger service requests against saved-contact and block rules
+- Authorizes Messenger service requests for text, attachment, voice-note, audio, and video sends against saved-contact and block rules
 - Uploads, replaces, compresses, and removes profile pictures with Cloudinary
 - Lets authenticated users change passwords securely
 - Lets authenticated users delete their account only after identity verification
@@ -117,6 +117,8 @@ Run the development server:
 ```powershell
 python run.py
 ```
+
+`run.py` is the local development entrypoint. It loads the `development` config by default, even if `.env` contains production values for `APP_ENV` or `FLASK_ENV`. To override this local runner, set `LOCAL_APP_ENV`.
 
 Base URL:
 
@@ -566,7 +568,7 @@ Success response:
 
 Purpose:
 
-- internal-only endpoint used by Messenger before allowing a message
+- internal-only endpoint used by Messenger before allowing a text, attachment, voice-note, audio, or video message
 - validates sender, recipient, saved-contact relationship, and block state
 
 Headers:
@@ -595,7 +597,7 @@ Allowed response:
 }
 ```
 
-Block state does not deny saved-contact sends. Allowed responses include internal `delivery_blocked` and `block_context` fields so Messenger can keep recipient-blocked messages at `sent` without delivering them. Deny responses include `allowed: false` with a `reason`, such as `contact_not_saved` or `self_message`.
+Block state does not deny saved-contact sends. Allowed responses include internal `delivery_blocked` and `block_context` fields so Messenger can keep recipient-blocked messages at `sent` without delivering them. Deny responses include `allowed: false` with a `reason`, such as `contact_not_saved` or `self_message`. Parent applies this policy the same way for text, files, voice notes, audio, and video because message content and media metadata stay outside Parent.
 
 ### `POST /parent/auth/change-password`
 
@@ -1285,6 +1287,7 @@ Parent is still required for encrypted messaging because it issues Messenger JWT
 - Issue short-lived Messenger JWTs from `POST /parent/messaging/token`.
 - Authorize Messenger sends through `POST /parent/internal/messaging/authorize`.
 - Enforce contact and block rules used by Messenger before delivery.
+- Treat text, file, voice-note, audio, and video sends as the same authorization decision. Parent never receives message ciphertext, media blobs, voice-note waveform data, playback duration, or attachment metadata.
 
 ### Messenger JWT Contract
 

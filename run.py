@@ -3,7 +3,7 @@ import os
 from app import create_app
 
 
-config_name = os.getenv("APP_ENV") or os.getenv("FLASK_ENV") or "development"
+config_name = os.getenv("LOCAL_APP_ENV") or "development"
 app = create_app(config_name)
 
 
