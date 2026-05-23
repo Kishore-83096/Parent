@@ -95,6 +95,71 @@ class MessagingAuthorizationSchema(ma.Schema):
     )
 
 
+class StoryAudiencePolicySchema(ma.Schema):
+    owner_user_id = fields.Integer(
+        required=True,
+        strict=True,
+        validate=validate.Range(min=1),
+    )
+    audience_account_numbers = fields.List(
+        fields.String(
+            validate=[
+                validate.Length(equal=10),
+                validate.Regexp(
+                    r"^7\d{9}$",
+                    error="Account number must start with 7 and contain exactly 10 digits.",
+                ),
+            ],
+        ),
+        load_default=None,
+    )
+
+
+class StoryVisibilityPolicySchema(ma.Schema):
+    owner_user_id = fields.Integer(
+        strict=True,
+        validate=validate.Range(min=1),
+        load_default=None,
+    )
+    owner_account_number = fields.String(
+        validate=[
+            validate.Length(equal=10),
+            validate.Regexp(
+                r"^7\d{9}$",
+                error="Owner account number must start with 7 and contain exactly 10 digits.",
+            ),
+        ],
+        load_default=None,
+    )
+    viewer_user_id = fields.Integer(
+        strict=True,
+        validate=validate.Range(min=1),
+        load_default=None,
+    )
+    viewer_account_number = fields.String(
+        validate=[
+            validate.Length(equal=10),
+            validate.Regexp(
+                r"^7\d{9}$",
+                error="Viewer account number must start with 7 and contain exactly 10 digits.",
+            ),
+        ],
+        load_default=None,
+    )
+
+    @validates_schema
+    def validate_identifiers(self, data, **kwargs):
+        if not data.get("owner_user_id") and not data.get("owner_account_number"):
+            raise ValidationError(
+                {"owner": ["Owner user id or account number is required."]}
+            )
+
+        if not data.get("viewer_user_id") and not data.get("viewer_account_number"):
+            raise ValidationError(
+                {"viewer": ["Viewer user id or account number is required."]}
+            )
+
+
 class DeleteAccountSchema(ma.Schema):
     username = fields.String(required=True)
     email = fields.Email(required=True)

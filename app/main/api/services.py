@@ -31,6 +31,8 @@ from app.main.api.schema import (
     ProfileSchema,
     RegisterSchema,
     SaveContactSchema,
+    StoryAudiencePolicySchema,
+    StoryVisibilityPolicySchema,
     profile_schema,
     user_schema,
 )
@@ -41,6 +43,8 @@ login_schema = LoginSchema()
 account_number_search_schema = AccountNumberSearchSchema()
 save_contact_schema = SaveContactSchema()
 messaging_authorization_schema = MessagingAuthorizationSchema()
+story_audience_policy_schema = StoryAudiencePolicySchema()
+story_visibility_policy_schema = StoryVisibilityPolicySchema()
 delete_account_schema = DeleteAccountSchema()
 change_password_schema = ChangePasswordSchema()
 profile_update_schema = ProfileSchema(partial=True)
@@ -363,6 +367,281 @@ def authorize_messaging_pair(payload):
             "blocked": sender_contact.blocked,
         },
     }, 200
+
+
+def resolve_story_audience_policy(payload):
+    try:
+        data = story_audience_policy_schema.load(payload or {})
+    except ValidationError as error:
+        return {"allowed": False, "errors": error.messages}, 400
+
+    owner = db.session.get(User, data["owner_user_id"])
+    if not owner:
+        return {
+            "allowed": False,
+            "reason": "owner_not_found",
+            "message": "Story owner user not found.",
+        }, 404
+
+    requested_accounts = data.get("audience_account_numbers")
+    requested_account_set = (
+        {str(account_number) for account_number in requested_accounts}
+        if requested_accounts
+        else None
+    )
+    owner_contacts = get_saved_contacts_query(owner.id).all()
+    if requested_account_set is not None:
+        owner_contacts = [
+            contact
+            for contact in owner_contacts
+            if contact.contact_user.account_number in requested_account_set
+        ]
+
+    reverse_blocked_user_ids = get_reverse_blocked_user_ids(
+        owner.id,
+        [contact.contact_user_id for contact in owner_contacts],
+    )
+    valid_contacts = []
+    excluded_contacts = []
+    seen_accounts = set()
+
+    for contact in owner_contacts:
+        seen_accounts.add(contact.contact_user.account_number)
+        exclusion_reason = get_story_contact_exclusion_reason(
+            contact,
+            reverse_blocked_user_ids,
+        )
+
+        if exclusion_reason:
+            excluded_contacts.append(
+                build_story_policy_contact_result(contact, exclusion_reason)
+            )
+            continue
+
+        valid_contacts.append(build_story_policy_contact_result(contact))
+
+    missing_accounts = []
+    if requested_account_set is not None:
+        missing_accounts = sorted(requested_account_set - seen_accounts)
+
+    return {
+        "allowed": True,
+        "owner_user_id": owner.id,
+        "owner_account_number": owner.account_number,
+        "valid_contacts": valid_contacts,
+        "excluded_contacts": excluded_contacts,
+        "missing_account_numbers": missing_accounts,
+        "requested_count": len(requested_account_set or []),
+        "valid_count": len(valid_contacts),
+    }, 200
+
+
+def authorize_story_visibility_policy(payload):
+    try:
+        data = story_visibility_policy_schema.load(payload or {})
+    except ValidationError as error:
+        return {"allowed": False, "errors": error.messages}, 400
+
+    owner = get_user_by_policy_identifier(
+        data.get("owner_user_id"),
+        data.get("owner_account_number"),
+    )
+    if not owner:
+        return {
+            "allowed": False,
+            "reason": "owner_not_found",
+            "message": "Story owner user not found.",
+        }, 404
+
+    viewer = get_user_by_policy_identifier(
+        data.get("viewer_user_id"),
+        data.get("viewer_account_number"),
+    )
+    if not viewer:
+        return {
+            "allowed": False,
+            "reason": "viewer_not_found",
+            "message": "Story viewer user not found.",
+        }, 404
+
+    if owner.id == viewer.id:
+        return {
+            "allowed": True,
+            "reason": "owner",
+            "owner_user_id": owner.id,
+            "owner_account_number": owner.account_number,
+            "viewer_user_id": viewer.id,
+            "viewer_account_number": viewer.account_number,
+            "is_owner": True,
+        }, 200
+
+    owner_contact = Contact.query.filter_by(
+        owner_user_id=owner.id,
+        contact_user_id=viewer.id,
+    ).first()
+    viewer_contact = Contact.query.filter_by(
+        owner_user_id=viewer.id,
+        contact_user_id=owner.id,
+    ).first()
+    owner_blocked_viewer = bool(owner_contact and owner_contact.blocked)
+    viewer_blocked_owner = bool(viewer_contact and viewer_contact.blocked)
+
+    if not owner_contact:
+        return build_story_visibility_denial(
+            owner,
+            viewer,
+            "viewer_not_in_owner_contacts",
+            owner_blocked_viewer,
+            viewer_blocked_owner,
+            owner_contact,
+            viewer_contact,
+        ), 403
+
+    if not viewer_contact:
+        return build_story_visibility_denial(
+            owner,
+            viewer,
+            "owner_not_in_viewer_contacts",
+            owner_blocked_viewer,
+            viewer_blocked_owner,
+            owner_contact,
+            viewer_contact,
+        ), 403
+
+    if owner_blocked_viewer:
+        return build_story_visibility_denial(
+            owner,
+            viewer,
+            "owner_blocked_viewer",
+            owner_blocked_viewer,
+            viewer_blocked_owner,
+            owner_contact,
+            viewer_contact,
+        ), 403
+
+    if viewer_blocked_owner:
+        return build_story_visibility_denial(
+            owner,
+            viewer,
+            "viewer_blocked_owner",
+            owner_blocked_viewer,
+            viewer_blocked_owner,
+            owner_contact,
+            viewer_contact,
+        ), 403
+
+    return {
+        "allowed": True,
+        "owner_user_id": owner.id,
+        "owner_account_number": owner.account_number,
+        "viewer_user_id": viewer.id,
+        "viewer_account_number": viewer.account_number,
+        "is_owner": False,
+        "block_context": {
+            "owner_blocked_viewer": False,
+            "viewer_blocked_owner": False,
+        },
+        "owner_contact": {
+            "alias_name": owner_contact.alias_name,
+            "blocked": owner_contact.blocked,
+        },
+        "viewer_contact": {
+            "alias_name": viewer_contact.alias_name,
+            "blocked": viewer_contact.blocked,
+        },
+    }, 200
+
+
+def get_user_by_policy_identifier(user_id=None, account_number=None):
+    if user_id:
+        return db.session.get(User, user_id)
+
+    if account_number:
+        return User.query.filter_by(account_number=account_number).first()
+
+    return None
+
+
+def get_reverse_blocked_user_ids(owner_user_id, viewer_user_ids):
+    viewer_user_ids = [user_id for user_id in viewer_user_ids if user_id]
+    if not viewer_user_ids:
+        return set()
+
+    rows = (
+        Contact.query.with_entities(Contact.owner_user_id)
+        .filter(
+            Contact.owner_user_id.in_(viewer_user_ids),
+            Contact.contact_user_id == owner_user_id,
+            Contact.blocked.is_(True),
+        )
+        .all()
+    )
+
+    return {owner_id for (owner_id,) in rows}
+
+
+def get_story_contact_exclusion_reason(contact, reverse_blocked_user_ids):
+    if contact.contact_user_id == contact.owner_user_id:
+        return "self_contact"
+
+    if contact.blocked:
+        return "owner_blocked_contact"
+
+    if contact.contact_user_id in reverse_blocked_user_ids:
+        return "contact_blocked_owner"
+
+    return None
+
+
+def build_story_policy_contact_result(contact, exclusion_reason=None):
+    profile = contact.contact_user.profile
+    result = {
+        "user_id": contact.contact_user.id,
+        "account_number": contact.contact_user.account_number,
+        "alias_name": contact.alias_name,
+        "blocked": contact.blocked,
+        "profile_picture": profile.profile_picture if profile else None,
+    }
+
+    if exclusion_reason:
+        result["reason"] = exclusion_reason
+
+    return result
+
+
+def build_story_visibility_denial(
+    owner,
+    viewer,
+    reason,
+    owner_blocked_viewer,
+    viewer_blocked_owner,
+    owner_contact,
+    viewer_contact,
+):
+    return {
+        "allowed": False,
+        "reason": reason,
+        "owner_user_id": owner.id,
+        "owner_account_number": owner.account_number,
+        "viewer_user_id": viewer.id,
+        "viewer_account_number": viewer.account_number,
+        "block_context": {
+            "owner_blocked_viewer": owner_blocked_viewer,
+            "viewer_blocked_owner": viewer_blocked_owner,
+        },
+        "owner_contact": build_optional_story_contact_context(owner_contact),
+        "viewer_contact": build_optional_story_contact_context(viewer_contact),
+    }
+
+
+def build_optional_story_contact_context(contact):
+    if not contact:
+        return None
+
+    return {
+        "alias_name": contact.alias_name,
+        "blocked": contact.blocked,
+    }
 
 
 def get_saved_contact_by_account_number(owner_user_id, account_number):

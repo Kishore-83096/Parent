@@ -7,6 +7,7 @@ from app.main.api.schema import user_schema
 from app.main.api.services import (
     authenticate_user,
     authorize_messaging_pair,
+    authorize_story_visibility_policy,
     block_saved_contact,
     change_user_password,
     create_messaging_token,
@@ -18,6 +19,7 @@ from app.main.api.services import (
     get_user_profile,
     remove_user_profile_picture,
     register_user,
+    resolve_story_audience_policy,
     save_searched_contact,
     search_user_by_account_number,
     unblock_saved_contact,
@@ -42,6 +44,22 @@ def authorize_messaging():
         return {"message": "Unauthorized internal service request."}, 401
 
     return authorize_messaging_pair(request.get_json() or {})
+
+
+@api_bp.post("/internal/stories/audience")
+def resolve_story_audience():
+    if not is_internal_service_request():
+        return {"message": "Unauthorized internal service request."}, 401
+
+    return resolve_story_audience_policy(request.get_json() or {})
+
+
+@api_bp.post("/internal/stories/visibility")
+def authorize_story_visibility():
+    if not is_internal_service_request():
+        return {"message": "Unauthorized internal service request."}, 401
+
+    return authorize_story_visibility_policy(request.get_json() or {})
 
 
 @api_bp.post("/auth/register")
