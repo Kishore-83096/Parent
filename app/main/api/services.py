@@ -638,9 +638,12 @@ def build_optional_story_contact_context(contact):
     if not contact:
         return None
 
+    profile = contact.contact_user.profile
+
     return {
         "alias_name": contact.alias_name,
         "blocked": contact.blocked,
+        "profile_picture": profile.profile_picture if profile else None,
     }
 
 
