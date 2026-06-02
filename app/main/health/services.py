@@ -1,3 +1,8 @@
+import json
+from urllib.error import HTTPError, URLError
+from urllib.request import Request, urlopen
+
+from flask import current_app
 from sqlalchemy import text
 from sqlalchemy.sql.compiler import IdentifierPreparer
 
@@ -5,6 +10,56 @@ from app import db
 
 
 SENSITIVE_COLUMNS = {"password_hash", "card_number"}
+
+
+def cleanup_expired_messenger_stories():
+    base_url = current_app.config.get("MESSENGER_SERVICE_URL") or ""
+    internal_service_token = current_app.config.get("INTERNAL_SERVICE_TOKEN") or ""
+    cleanup_url = f"{base_url.rstrip('/')}/stories/internal/cleanup-expired/"
+
+    if not base_url:
+        return {"ok": False, "message": "Messenger service URL is not configured."}, 503
+
+    if not internal_service_token:
+        return {"ok": False, "message": "Internal service token is not configured."}, 503
+
+    cleanup_request = Request(
+        cleanup_url,
+        data=b"{}",
+        headers={
+            "Content-Type": "application/json",
+            "X-Internal-Service-Token": internal_service_token,
+        },
+        method="POST",
+    )
+
+    try:
+        with urlopen(
+            cleanup_request,
+            timeout=current_app.config["MESSENGER_SERVICE_TIMEOUT_SECONDS"],
+        ) as response:
+            response_status = response.status
+            response_body = decode_json_response(response.read())
+    except HTTPError as error:
+        return {
+            "ok": False,
+            "message": "Messenger cleanup request failed.",
+            "messenger": decode_json_response(error.read()),
+        }, error.code
+    except (URLError, TimeoutError):
+        return {"ok": False, "message": "Messenger cleanup service is unavailable."}, 503
+
+    return {
+        "ok": 200 <= response_status < 300,
+        "messenger": response_body,
+    }, response_status
+
+
+def decode_json_response(response_body):
+    try:
+        return json.loads(response_body.decode("utf-8"))
+    except (UnicodeDecodeError, ValueError):
+        return {}
 
 
 def check_database_connection():

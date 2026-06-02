@@ -85,6 +85,40 @@
             white-space: nowrap;
         }
 
+        .action-button {
+            margin-left: auto;
+            border: 1px solid #b42318;
+            border-radius: 6px;
+            background: #fff5f3;
+            color: #b42318;
+            cursor: pointer;
+            font-weight: 700;
+            padding: 7px 11px;
+        }
+
+        .action-button:hover {
+            background: #fee4e2;
+        }
+
+        .flash {
+            border: 1px solid var(--line);
+            border-radius: 6px;
+            margin-bottom: 16px;
+            padding: 12px 14px;
+        }
+
+        .flash.success {
+            background: var(--pk);
+            border-color: #b7dbd4;
+            color: var(--accent);
+        }
+
+        .flash.error {
+            background: #fff5f3;
+            border-color: #fecdca;
+            color: #b42318;
+        }
+
         .table-wrap {
             overflow: auto;
             max-height: 620px;
@@ -189,10 +223,23 @@
     </header>
 
     <main>
+        {% for category, message in get_flashed_messages(with_categories=true) %}
+            <div class="flash {{ category }}">{{ message }}</div>
+        {% endfor %}
+
         {% for table_name, table in tables.items() %}
             <section class="db-table">
                 <div class="db-table-title">
                     <h2>{{ table_name }}</h2>
+                    {% if table_name == 'stories_story' %}
+                        <form
+                            action="{{ url_for('health.cleanup_expired_story_data') }}"
+                            method="post"
+                            onsubmit="return confirm('Delete expired story media data?');"
+                        >
+                            <button class="action-button" type="submit">Delete Expired Story Data</button>
+                        </form>
+                    {% endif %}
                     <span class="badge">{{ table.columns|length }} columns · {{ table.rows|length }} rows</span>
                 </div>
 

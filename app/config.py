@@ -30,6 +30,11 @@ def get_allowed_hosts():
     return [host.strip() for host in hosts.split(",") if host.strip()]
 
 
+def get_first_service_url(name, default=""):
+    urls = os.getenv(name, default)
+    return next((url.strip().rstrip("/") for url in urls.split(",") if url.strip()), "")
+
+
 class Config:
     SECRET_KEY = os.getenv("SECRET_KEY", "dev-secret-key")
     JWT_SECRET_KEY = os.getenv("JWT_SECRET_KEY", "dev-jwt-secret-key")
@@ -39,6 +44,8 @@ class Config:
     CORS_ORIGINS = get_allowed_hosts()
     CLOUDINARY_PROFILE_FOLDER = os.getenv("CLOUDINARY_PROFILE_FOLDER", "MAIN/Display_pics")
     INTERNAL_SERVICE_TOKEN = os.getenv("INTERNAL_SERVICE_TOKEN", "")
+    MESSENGER_SERVICE_URL = get_first_service_url("MESSENGER_SERVICE_URL", "http://localhost:8000")
+    MESSENGER_SERVICE_TIMEOUT_SECONDS = int(os.getenv("MESSENGER_SERVICE_TIMEOUT_SECONDS", 5))
     MESSAGING_JWT_SECRET = os.getenv("MESSAGING_JWT_SECRET", "")
     MESSAGING_JWT_ISSUER = os.getenv("MESSAGING_JWT_ISSUER", "parrot-parent")
     MESSAGING_JWT_AUDIENCE = os.getenv("MESSAGING_JWT_AUDIENCE", "parrot-messenger")
