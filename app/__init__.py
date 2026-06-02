@@ -14,6 +14,15 @@ jwt = JWTManager()
 migrate = Migrate()
 
 
+def include_object(object_, name, type_, reflected, compare_to):
+    # Parent and Messenger share a database. Do not treat Django-owned tables
+    # as removed just because they are absent from Parent's SQLAlchemy metadata.
+    if type_ == "table" and reflected and compare_to is None:
+        return False
+
+    return True
+
+
 def create_app(config_name=None):
     app = Flask(__name__)
     app.config.from_object(config_by_name[config_name or "development"])
@@ -23,7 +32,7 @@ def create_app(config_name=None):
     db.init_app(app)
     ma.init_app(app)
     jwt.init_app(app)
-    migrate.init_app(app, db)
+    migrate.init_app(app, db, include_object=include_object)
 
     from app.main.api.errors import register_api_error_handlers
     from app.main.api.routes import api_bp
