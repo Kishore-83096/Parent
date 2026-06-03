@@ -26,6 +26,7 @@ from app.main.api.schema import (
     AccountNumberSearchSchema,
     ChangePasswordSchema,
     DeleteAccountSchema,
+    GroupMemberResolveSchema,
     LoginSchema,
     MessagingAuthorizationSchema,
     ProfileSchema,
@@ -44,6 +45,7 @@ account_number_search_schema = AccountNumberSearchSchema()
 save_contact_schema = SaveContactSchema()
 messaging_authorization_schema = MessagingAuthorizationSchema()
 story_audience_policy_schema = StoryAudiencePolicySchema()
+group_member_resolve_schema = GroupMemberResolveSchema()
 story_visibility_policy_schema = StoryVisibilityPolicySchema()
 delete_account_schema = DeleteAccountSchema()
 change_password_schema = ChangePasswordSchema()
@@ -436,6 +438,72 @@ def resolve_story_audience_policy(payload):
     }, 200
 
 
+def resolve_group_member_contacts(payload):
+    try:
+        data = group_member_resolve_schema.load(payload or {})
+    except ValidationError as error:
+        return {"allowed": False, "errors": error.messages}, 400
+
+    owner = db.session.get(User, data["owner_user_id"])
+    if not owner:
+        return {
+            "allowed": False,
+            "reason": "owner_not_found",
+            "message": "Group creator user not found.",
+        }, 404
+
+    requested_accounts = []
+    seen_accounts = set()
+    duplicate_account_numbers = []
+    for account_number in data["member_account_numbers"]:
+        normalized_account = str(account_number)
+        if normalized_account in seen_accounts:
+            duplicate_account_numbers.append(normalized_account)
+            continue
+
+        seen_accounts.add(normalized_account)
+        requested_accounts.append(normalized_account)
+
+    if owner.account_number in seen_accounts:
+        return {
+            "allowed": False,
+            "reason": "creator_selected",
+            "message": "The group creator is added automatically.",
+        }, 400
+
+    contacts = (
+        get_saved_contacts_query(owner.id)
+        .filter(Contact.contact_user.has(User.account_number.in_(requested_accounts)))
+        .all()
+    )
+    contacts_by_account = {
+        contact.contact_user.account_number: contact
+        for contact in contacts
+    }
+    valid_contacts = [
+        build_group_member_contact_result(contacts_by_account[account_number])
+        for account_number in requested_accounts
+        if account_number in contacts_by_account
+    ]
+    resolved_accounts = {contact["account_number"] for contact in valid_contacts}
+
+    return {
+        "allowed": True,
+        "owner_user_id": owner.id,
+        "owner_account_number": owner.account_number,
+        "owner_display_name": build_user_display_name(owner),
+        "valid_contacts": valid_contacts,
+        "not_saved_account_numbers": [
+            account_number
+            for account_number in requested_accounts
+            if account_number not in resolved_accounts
+        ],
+        "duplicate_account_numbers": duplicate_account_numbers,
+        "requested_count": len(requested_accounts),
+        "valid_count": len(valid_contacts),
+    }, 200
+
+
 def authorize_story_visibility_policy(payload):
     try:
         data = story_visibility_policy_schema.load(payload or {})
@@ -607,6 +675,38 @@ def build_story_policy_contact_result(contact, exclusion_reason=None):
         result["reason"] = exclusion_reason
 
     return result
+
+
+def build_group_member_contact_result(contact):
+    user = contact.contact_user
+    profile = user.profile
+
+    return {
+        "user_id": user.id,
+        "account_number": user.account_number,
+        "display_name": contact.alias_name or build_user_display_name(user),
+        "first_name": profile.first_name if profile else None,
+        "last_name": profile.last_name if profile else None,
+        "username": user.username,
+        "profile_picture": profile.profile_picture if profile else None,
+    }
+
+
+def build_user_display_name(user):
+    profile = user.profile
+    full_name = (
+        " ".join(
+            value
+            for value in [
+                profile.first_name if profile else "",
+                profile.last_name if profile else "",
+            ]
+            if value
+        )
+        .strip()
+    )
+
+    return full_name or user.username or user.account_number
 
 
 def build_story_visibility_denial(

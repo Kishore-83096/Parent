@@ -19,6 +19,7 @@ from app.main.api.services import (
     get_user_profile,
     remove_user_profile_picture,
     register_user,
+    resolve_group_member_contacts,
     resolve_story_audience_policy,
     save_searched_contact,
     search_user_by_account_number,
@@ -52,6 +53,14 @@ def resolve_story_audience():
         return {"message": "Unauthorized internal service request."}, 401
 
     return resolve_story_audience_policy(request.get_json() or {})
+
+
+@api_bp.post("/internal/groups/members/resolve")
+def resolve_group_members():
+    if not is_internal_service_request():
+        return {"message": "Unauthorized internal service request."}, 401
+
+    return resolve_group_member_contacts(request.get_json() or {})
 
 
 @api_bp.post("/internal/stories/visibility")

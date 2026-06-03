@@ -115,6 +115,27 @@ class StoryAudiencePolicySchema(ma.Schema):
     )
 
 
+class GroupMemberResolveSchema(ma.Schema):
+    owner_user_id = fields.Integer(
+        required=True,
+        strict=True,
+        validate=validate.Range(min=1),
+    )
+    member_account_numbers = fields.List(
+        fields.String(
+            validate=[
+                validate.Length(equal=10),
+                validate.Regexp(
+                    r"^7\d{9}$",
+                    error="Account number must start with 7 and contain exactly 10 digits.",
+                ),
+            ],
+        ),
+        required=True,
+        validate=validate.Length(min=1, max=100),
+    )
+
+
 class StoryVisibilityPolicySchema(ma.Schema):
     owner_user_id = fields.Integer(
         strict=True,
