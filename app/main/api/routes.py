@@ -22,6 +22,7 @@ from app.main.api.services import (
     register_user,
     resolve_group_member_contacts,
     resolve_presence_visibility_policy,
+    resolve_receipt_visibility_policy,
     resolve_story_audience_policy,
     save_searched_contact,
     search_user_by_account_number,
@@ -56,6 +57,14 @@ def resolve_presence_visibility():
         return {"message": "Unauthorized internal service request."}, 401
 
     return resolve_presence_visibility_policy(request.get_json() or {})
+
+
+@api_bp.post("/internal/receipts/visibility")
+def resolve_receipt_visibility():
+    if not is_internal_service_request():
+        return {"message": "Unauthorized internal service request."}, 401
+
+    return resolve_receipt_visibility_policy(request.get_json() or {})
 
 
 @api_bp.post("/internal/stories/audience")

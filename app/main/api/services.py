@@ -34,6 +34,7 @@ from app.main.api.schema import (
     MessagingAuthorizationSchema,
     PresenceVisibilityPolicySchema,
     ProfileSchema,
+    ReceiptVisibilityPolicySchema,
     RegisterSchema,
     SaveContactSchema,
     StoryAudiencePolicySchema,
@@ -52,6 +53,7 @@ presence_visibility_policy_schema = PresenceVisibilityPolicySchema()
 story_audience_policy_schema = StoryAudiencePolicySchema()
 group_member_resolve_schema = GroupMemberResolveSchema()
 story_visibility_policy_schema = StoryVisibilityPolicySchema()
+receipt_visibility_policy_schema = ReceiptVisibilityPolicySchema()
 delete_account_schema = DeleteAccountSchema()
 change_password_schema = ChangePasswordSchema()
 profile_update_schema = ProfileSchema(partial=True)
@@ -311,6 +313,8 @@ def set_saved_contact_ghosted(owner_user_id, payload, ghosted):
         return error_response, status_code
 
     contact.ghosted = ghosted
+    if ghosted:
+        contact.blocked = False
     db.session.add(contact)
     db.session.commit()
     refresh_saved_contacts_cache(owner_user_id)
@@ -407,6 +411,7 @@ def authorize_messaging_pair(payload):
         contact_user_id=sender.id,
     ).first()
     recipient_blocked_sender = bool(recipient_contact and recipient_contact.blocked)
+    recipient_ghosted_sender = bool(recipient_contact and recipient_contact.ghosted)
 
     sender_contact = Contact.query.filter_by(
         owner_user_id=sender.id,
@@ -424,6 +429,10 @@ def authorize_messaging_pair(payload):
                 "sender_blocked_recipient": False,
                 "recipient_blocked_sender": recipient_blocked_sender,
             },
+            "ghost_context": {
+                "sender_ghosted_recipient": False,
+                "recipient_ghosted_sender": recipient_ghosted_sender,
+            },
         }, 403
 
     return {
@@ -437,10 +446,69 @@ def authorize_messaging_pair(payload):
             "sender_blocked_recipient": sender_contact.blocked,
             "recipient_blocked_sender": recipient_blocked_sender,
         },
+        "ghost_context": {
+            "sender_ghosted_recipient": sender_contact.ghosted,
+            "recipient_ghosted_sender": recipient_ghosted_sender,
+        },
         "contact": {
             "alias_name": sender_contact.alias_name,
             "blocked": sender_contact.blocked,
+            "ghosted": sender_contact.ghosted,
         },
+    }, 200
+
+
+def resolve_receipt_visibility_policy(payload):
+    try:
+        data = receipt_visibility_policy_schema.load(payload or {})
+    except ValidationError as error:
+        return {"allowed": False, "errors": error.messages}, 400
+
+    owner = db.session.get(User, data["owner_user_id"])
+    if not owner:
+        return {
+            "allowed": False,
+            "reason": "owner_not_found",
+            "message": "Receipt owner user not found.",
+        }, 404
+
+    candidate_user_ids = []
+    seen_user_ids = set()
+    for user_id in data.get("candidate_user_ids") or []:
+        if user_id == owner.id or user_id in seen_user_ids:
+            continue
+
+        seen_user_ids.add(user_id)
+        candidate_user_ids.append(user_id)
+
+    if not candidate_user_ids:
+        return {
+            "allowed": True,
+            "owner_user_id": owner.id,
+            "hidden_user_ids": [],
+            "visible_user_ids": [],
+        }, 200
+
+    hidden_user_ids = set(
+        user_id
+        for (user_id,) in Contact.query.with_entities(Contact.contact_user_id)
+        .filter(
+            Contact.owner_user_id == owner.id,
+            Contact.contact_user_id.in_(candidate_user_ids),
+            Contact.ghosted.is_(True),
+        )
+        .all()
+    )
+
+    return {
+        "allowed": True,
+        "owner_user_id": owner.id,
+        "hidden_user_ids": sorted(hidden_user_ids),
+        "visible_user_ids": [
+            user_id
+            for user_id in candidate_user_ids
+            if user_id not in hidden_user_ids
+        ],
     }, 200
 
 
@@ -718,6 +786,8 @@ def authorize_story_visibility_policy(payload):
     ).first()
     owner_blocked_viewer = bool(owner_contact and owner_contact.blocked)
     viewer_blocked_owner = bool(viewer_contact and viewer_contact.blocked)
+    owner_ghosted_viewer = bool(owner_contact and owner_contact.ghosted)
+    viewer_ghosted_owner = bool(viewer_contact and viewer_contact.ghosted)
 
     if not owner_contact:
         return build_story_visibility_denial(
@@ -726,6 +796,8 @@ def authorize_story_visibility_policy(payload):
             "viewer_not_in_owner_contacts",
             owner_blocked_viewer,
             viewer_blocked_owner,
+            owner_ghosted_viewer,
+            viewer_ghosted_owner,
             owner_contact,
             viewer_contact,
         ), 403
@@ -737,6 +809,8 @@ def authorize_story_visibility_policy(payload):
             "owner_not_in_viewer_contacts",
             owner_blocked_viewer,
             viewer_blocked_owner,
+            owner_ghosted_viewer,
+            viewer_ghosted_owner,
             owner_contact,
             viewer_contact,
         ), 403
@@ -748,6 +822,8 @@ def authorize_story_visibility_policy(payload):
             "viewer_blocked_owner",
             owner_blocked_viewer,
             viewer_blocked_owner,
+            owner_ghosted_viewer,
+            viewer_ghosted_owner,
             owner_contact,
             viewer_contact,
         ), 403
@@ -763,13 +839,19 @@ def authorize_story_visibility_policy(payload):
             "owner_blocked_viewer": owner_blocked_viewer,
             "viewer_blocked_owner": False,
         },
+        "ghost_context": {
+            "owner_ghosted_viewer": owner_ghosted_viewer,
+            "viewer_ghosted_owner": viewer_ghosted_owner,
+        },
         "owner_contact": {
             "alias_name": owner_contact.alias_name,
             "blocked": owner_contact.blocked,
+            "ghosted": owner_contact.ghosted,
         },
         "viewer_contact": {
             "alias_name": viewer_contact.alias_name,
             "blocked": viewer_contact.blocked,
+            "ghosted": viewer_contact.ghosted,
         },
     }, 200
 
@@ -866,6 +948,8 @@ def build_story_visibility_denial(
     reason,
     owner_blocked_viewer,
     viewer_blocked_owner,
+    owner_ghosted_viewer,
+    viewer_ghosted_owner,
     owner_contact,
     viewer_contact,
 ):
@@ -879,6 +963,10 @@ def build_story_visibility_denial(
         "block_context": {
             "owner_blocked_viewer": owner_blocked_viewer,
             "viewer_blocked_owner": viewer_blocked_owner,
+        },
+        "ghost_context": {
+            "owner_ghosted_viewer": owner_ghosted_viewer,
+            "viewer_ghosted_owner": viewer_ghosted_owner,
         },
         "owner_contact": build_optional_story_contact_context(owner_contact),
         "viewer_contact": build_optional_story_contact_context(viewer_contact),
@@ -894,6 +982,7 @@ def build_optional_story_contact_context(contact):
     return {
         "alias_name": contact.alias_name,
         "blocked": contact.blocked,
+        "ghosted": contact.ghosted,
         "profile_picture": profile.profile_picture if profile else None,
     }
 

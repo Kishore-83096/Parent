@@ -127,6 +127,22 @@ class PresenceVisibilityPolicySchema(ma.Schema):
             )
 
 
+class ReceiptVisibilityPolicySchema(ma.Schema):
+    owner_user_id = fields.Integer(
+        required=True,
+        strict=True,
+        validate=validate.Range(min=1),
+    )
+    candidate_user_ids = fields.List(
+        fields.Integer(
+            strict=True,
+            validate=validate.Range(min=1),
+        ),
+        required=True,
+        validate=validate.Length(max=500),
+    )
+
+
 class StoryAudiencePolicySchema(ma.Schema):
     owner_user_id = fields.Integer(
         required=True,
