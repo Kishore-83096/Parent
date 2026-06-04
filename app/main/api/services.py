@@ -292,8 +292,11 @@ def set_saved_contact_blocked(owner_user_id, payload, blocked):
     db.session.add(contact)
     db.session.commit()
     refresh_saved_contacts_cache(owner_user_id)
-    if blocked:
-        notify_messenger_presence_hidden(contact.owner, contact)
+    notify_messenger_presence_visibility(
+        contact.owner,
+        contact,
+        visible=not blocked and not contact.ghosted,
+    )
 
     message = "Contact blocked successfully." if blocked else "Contact unblocked successfully."
     return {"message": message, "contact": build_saved_contact_result(contact)}, 200
@@ -318,25 +321,33 @@ def set_saved_contact_ghosted(owner_user_id, payload, ghosted):
     db.session.add(contact)
     db.session.commit()
     refresh_saved_contacts_cache(owner_user_id)
-    if ghosted:
-        notify_messenger_presence_hidden(contact.owner, contact)
+    notify_messenger_presence_visibility(
+        contact.owner,
+        contact,
+        visible=not ghosted and not contact.blocked,
+    )
 
     message = "Contact ghosted successfully." if ghosted else "Contact unghosted successfully."
     return {"message": message, "contact": build_saved_contact_result(contact)}, 200
 
 
 def notify_messenger_presence_hidden(owner, contact):
+    notify_messenger_presence_visibility(owner, contact, visible=False)
+
+
+def notify_messenger_presence_visibility(owner, contact, visible):
     base_url = current_app.config.get("MESSENGER_SERVICE_URL") or ""
     internal_service_token = current_app.config.get("INTERNAL_SERVICE_TOKEN") or ""
     if not base_url or not internal_service_token or not owner or not contact:
         return
 
-    presence_url = f"{base_url.rstrip('/')}/presence/internal/hidden/"
+    presence_url = f"{base_url.rstrip('/')}/presence/internal/visibility/"
     payload = json.dumps(
         {
             "owner_user_id": owner.id,
             "owner_account_number": owner.account_number,
             "viewer_user_id": contact.contact_user_id,
+            "visible": bool(visible),
         }
     ).encode("utf-8")
     request_payload = Request(
@@ -1035,6 +1046,7 @@ def get_saved_contact_by_account_number(owner_user_id, account_number):
 
 def build_saved_contact_result(contact):
     return {
+        "user_id": contact.contact_user.id,
         "alias_name": contact.alias_name,
         "account_number": contact.contact_user.account_number,
         "blocked": contact.blocked,
@@ -1047,6 +1059,7 @@ def build_saved_contact_detail_result(contact):
     profile = contact.contact_user.profile
 
     return {
+        "user_id": contact.contact_user.id,
         "alias_name": contact.alias_name,
         "account_number": contact.contact_user.account_number,
         "blocked": contact.blocked,
