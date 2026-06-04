@@ -318,6 +318,8 @@ def set_saved_contact_ghosted(owner_user_id, payload, ghosted):
     db.session.add(contact)
     db.session.commit()
     refresh_saved_contacts_cache(owner_user_id)
+    if ghosted:
+        notify_messenger_presence_hidden(contact.owner, contact)
 
     message = "Contact ghosted successfully." if ghosted else "Contact unghosted successfully."
     return {"message": message, "contact": build_saved_contact_result(contact)}, 200
@@ -548,6 +550,7 @@ def resolve_presence_visibility_policy(payload):
             "visible_user_ids": [],
             "hidden_user_ids": [],
             "blocked_user_ids": [],
+            "ghosted_user_ids": [],
         }
         if data.get("owner_user_id"):
             result["owner_user_id"] = scope_user.id
@@ -557,33 +560,33 @@ def resolve_presence_visibility_policy(payload):
         return result, 200
 
     if data.get("owner_user_id"):
-        blocked_user_ids = set(
-            user_id
-            for (user_id,) in Contact.query.with_entities(Contact.contact_user_id)
-            .filter(
-                Contact.owner_user_id == scope_user.id,
-                Contact.contact_user_id.in_(candidate_user_ids),
-                Contact.blocked.is_(True),
-            )
-            .all()
+        blocked_user_ids = get_owner_presence_hidden_user_ids(
+            scope_user.id,
+            candidate_user_ids,
+            Contact.blocked,
+        )
+        ghosted_user_ids = get_owner_presence_hidden_user_ids(
+            scope_user.id,
+            candidate_user_ids,
+            Contact.ghosted,
         )
     else:
-        blocked_user_ids = set(
-            user_id
-            for (user_id,) in Contact.query.with_entities(Contact.owner_user_id)
-            .filter(
-                Contact.owner_user_id.in_(candidate_user_ids),
-                Contact.contact_user_id == scope_user.id,
-                Contact.blocked.is_(True),
-            )
-            .all()
+        blocked_user_ids = get_viewer_presence_hidden_user_ids(
+            scope_user.id,
+            candidate_user_ids,
+            Contact.blocked,
+        )
+        ghosted_user_ids = get_viewer_presence_hidden_user_ids(
+            scope_user.id,
+            candidate_user_ids,
+            Contact.ghosted,
         )
 
-
+    hidden_user_ids = blocked_user_ids | ghosted_user_ids
     visible_user_ids = [
         user_id
         for user_id in candidate_user_ids
-        if user_id not in blocked_user_ids
+        if user_id not in hidden_user_ids
     ]
 
     result = {
@@ -592,9 +595,10 @@ def resolve_presence_visibility_policy(payload):
         "hidden_user_ids": [
             user_id
             for user_id in candidate_user_ids
-            if user_id in blocked_user_ids
+            if user_id in hidden_user_ids
         ],
         "blocked_user_ids": sorted(blocked_user_ids),
+        "ghosted_user_ids": sorted(ghosted_user_ids),
     }
     if data.get("owner_user_id"):
         result["owner_user_id"] = scope_user.id
@@ -602,6 +606,32 @@ def resolve_presence_visibility_policy(payload):
         result["viewer_user_id"] = scope_user.id
 
     return result, 200
+
+
+def get_owner_presence_hidden_user_ids(owner_user_id, candidate_user_ids, visibility_column):
+    return set(
+        user_id
+        for (user_id,) in Contact.query.with_entities(Contact.contact_user_id)
+        .filter(
+            Contact.owner_user_id == owner_user_id,
+            Contact.contact_user_id.in_(candidate_user_ids),
+            visibility_column.is_(True),
+        )
+        .all()
+    )
+
+
+def get_viewer_presence_hidden_user_ids(viewer_user_id, candidate_user_ids, visibility_column):
+    return set(
+        user_id
+        for (user_id,) in Contact.query.with_entities(Contact.owner_user_id)
+        .filter(
+            Contact.owner_user_id.in_(candidate_user_ids),
+            Contact.contact_user_id == viewer_user_id,
+            visibility_column.is_(True),
+        )
+        .all()
+    )
 
 
 def resolve_story_audience_policy(payload):
