@@ -285,6 +285,8 @@ def set_saved_contact_blocked(owner_user_id, payload, blocked):
         return error_response, status_code
 
     contact.blocked = blocked
+    if blocked:
+        contact.ghosted = False
     db.session.add(contact)
     db.session.commit()
     refresh_saved_contacts_cache(owner_user_id)
