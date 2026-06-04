@@ -1,7 +1,10 @@
+import json
 from datetime import datetime, timedelta, timezone
 from io import BytesIO
 from secrets import randbelow
+from urllib.error import HTTPError, URLError
 from urllib.parse import urlparse
+from urllib.request import Request, urlopen
 from uuid import uuid4
 
 import cloudinary
@@ -29,6 +32,7 @@ from app.main.api.schema import (
     GroupMemberResolveSchema,
     LoginSchema,
     MessagingAuthorizationSchema,
+    PresenceVisibilityPolicySchema,
     ProfileSchema,
     RegisterSchema,
     SaveContactSchema,
@@ -44,6 +48,7 @@ login_schema = LoginSchema()
 account_number_search_schema = AccountNumberSearchSchema()
 save_contact_schema = SaveContactSchema()
 messaging_authorization_schema = MessagingAuthorizationSchema()
+presence_visibility_policy_schema = PresenceVisibilityPolicySchema()
 story_audience_policy_schema = StoryAudiencePolicySchema()
 group_member_resolve_schema = GroupMemberResolveSchema()
 story_visibility_policy_schema = StoryVisibilityPolicySchema()
@@ -275,9 +280,45 @@ def set_saved_contact_blocked(owner_user_id, payload, blocked):
     db.session.add(contact)
     db.session.commit()
     refresh_saved_contacts_cache(owner_user_id)
+    if blocked:
+        notify_messenger_presence_hidden(contact.owner, contact)
 
     message = "Contact blocked successfully." if blocked else "Contact unblocked successfully."
     return {"message": message, "contact": build_saved_contact_result(contact)}, 200
+
+
+def notify_messenger_presence_hidden(owner, contact):
+    base_url = current_app.config.get("MESSENGER_SERVICE_URL") or ""
+    internal_service_token = current_app.config.get("INTERNAL_SERVICE_TOKEN") or ""
+    if not base_url or not internal_service_token or not owner or not contact:
+        return
+
+    presence_url = f"{base_url.rstrip('/')}/presence/internal/hidden/"
+    payload = json.dumps(
+        {
+            "owner_user_id": owner.id,
+            "owner_account_number": owner.account_number,
+            "viewer_user_id": contact.contact_user_id,
+        }
+    ).encode("utf-8")
+    request_payload = Request(
+        presence_url,
+        data=payload,
+        headers={
+            "Content-Type": "application/json",
+            "X-Internal-Service-Token": internal_service_token,
+        },
+        method="POST",
+    )
+
+    try:
+        with urlopen(
+            request_payload,
+            timeout=min(current_app.config["MESSENGER_SERVICE_TIMEOUT_SECONDS"], 2),
+        ):
+            return
+    except (HTTPError, URLError, TimeoutError):
+        return
 
 
 def delete_saved_contact(owner_user_id, payload):
@@ -369,6 +410,98 @@ def authorize_messaging_pair(payload):
             "blocked": sender_contact.blocked,
         },
     }, 200
+
+
+def resolve_presence_visibility_policy(payload):
+    try:
+        data = presence_visibility_policy_schema.load(payload or {})
+    except ValidationError as error:
+        return {"allowed": False, "errors": error.messages}, 400
+
+    scope_user_id = data.get("owner_user_id") or data.get("viewer_user_id")
+    scope_user = db.session.get(User, scope_user_id)
+    if not scope_user:
+        reason = "owner_not_found" if data.get("owner_user_id") else "viewer_not_found"
+        message = (
+            "Presence owner user not found."
+            if data.get("owner_user_id")
+            else "Presence viewer user not found."
+        )
+        return {
+            "allowed": False,
+            "reason": reason,
+            "message": message,
+        }, 404
+
+    candidate_user_ids = []
+    seen_user_ids = set()
+    for user_id in data.get("candidate_user_ids") or []:
+        if user_id == scope_user.id or user_id in seen_user_ids:
+            continue
+
+        seen_user_ids.add(user_id)
+        candidate_user_ids.append(user_id)
+
+    if not candidate_user_ids:
+        result = {
+            "allowed": True,
+            "visible_user_ids": [],
+            "hidden_user_ids": [],
+            "blocked_user_ids": [],
+        }
+        if data.get("owner_user_id"):
+            result["owner_user_id"] = scope_user.id
+        else:
+            result["viewer_user_id"] = scope_user.id
+
+        return result, 200
+
+    if data.get("owner_user_id"):
+        blocked_user_ids = set(
+            user_id
+            for (user_id,) in Contact.query.with_entities(Contact.contact_user_id)
+            .filter(
+                Contact.owner_user_id == scope_user.id,
+                Contact.contact_user_id.in_(candidate_user_ids),
+                Contact.blocked.is_(True),
+            )
+            .all()
+        )
+    else:
+        blocked_user_ids = set(
+            user_id
+            for (user_id,) in Contact.query.with_entities(Contact.owner_user_id)
+            .filter(
+                Contact.owner_user_id.in_(candidate_user_ids),
+                Contact.contact_user_id == scope_user.id,
+                Contact.blocked.is_(True),
+            )
+            .all()
+        )
+
+
+    visible_user_ids = [
+        user_id
+        for user_id in candidate_user_ids
+        if user_id not in blocked_user_ids
+    ]
+
+    result = {
+        "allowed": True,
+        "visible_user_ids": visible_user_ids,
+        "hidden_user_ids": [
+            user_id
+            for user_id in candidate_user_ids
+            if user_id in blocked_user_ids
+        ],
+        "blocked_user_ids": sorted(blocked_user_ids),
+    }
+    if data.get("owner_user_id"):
+        result["owner_user_id"] = scope_user.id
+    else:
+        result["viewer_user_id"] = scope_user.id
+
+    return result, 200
 
 
 def resolve_story_audience_policy(payload):
@@ -576,17 +709,6 @@ def authorize_story_visibility_policy(payload):
             viewer_contact,
         ), 403
 
-    if owner_blocked_viewer:
-        return build_story_visibility_denial(
-            owner,
-            viewer,
-            "owner_blocked_viewer",
-            owner_blocked_viewer,
-            viewer_blocked_owner,
-            owner_contact,
-            viewer_contact,
-        ), 403
-
     if viewer_blocked_owner:
         return build_story_visibility_denial(
             owner,
@@ -606,7 +728,7 @@ def authorize_story_visibility_policy(payload):
         "viewer_account_number": viewer.account_number,
         "is_owner": False,
         "block_context": {
-            "owner_blocked_viewer": False,
+            "owner_blocked_viewer": owner_blocked_viewer,
             "viewer_blocked_owner": False,
         },
         "owner_contact": {
@@ -651,9 +773,6 @@ def get_reverse_blocked_user_ids(owner_user_id, viewer_user_ids):
 def get_story_contact_exclusion_reason(contact, reverse_blocked_user_ids):
     if contact.contact_user_id == contact.owner_user_id:
         return "self_contact"
-
-    if contact.blocked:
-        return "owner_blocked_contact"
 
     if contact.contact_user_id in reverse_blocked_user_ids:
         return "contact_blocked_owner"

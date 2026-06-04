@@ -20,6 +20,7 @@ from app.main.api.services import (
     remove_user_profile_picture,
     register_user,
     resolve_group_member_contacts,
+    resolve_presence_visibility_policy,
     resolve_story_audience_policy,
     save_searched_contact,
     search_user_by_account_number,
@@ -45,6 +46,14 @@ def authorize_messaging():
         return {"message": "Unauthorized internal service request."}, 401
 
     return authorize_messaging_pair(request.get_json() or {})
+
+
+@api_bp.post("/internal/presence/visibility")
+def resolve_presence_visibility():
+    if not is_internal_service_request():
+        return {"message": "Unauthorized internal service request."}, 401
+
+    return resolve_presence_visibility_policy(request.get_json() or {})
 
 
 @api_bp.post("/internal/stories/audience")

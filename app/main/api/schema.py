@@ -95,6 +95,38 @@ class MessagingAuthorizationSchema(ma.Schema):
     )
 
 
+class PresenceVisibilityPolicySchema(ma.Schema):
+    owner_user_id = fields.Integer(
+        strict=True,
+        validate=validate.Range(min=1),
+        load_default=None,
+    )
+    viewer_user_id = fields.Integer(
+        strict=True,
+        validate=validate.Range(min=1),
+        load_default=None,
+    )
+    candidate_user_ids = fields.List(
+        fields.Integer(
+            strict=True,
+            validate=validate.Range(min=1),
+        ),
+        required=True,
+        validate=validate.Length(max=500),
+    )
+
+    @validates_schema
+    def validate_scope(self, data, **kwargs):
+        if bool(data.get("owner_user_id")) == bool(data.get("viewer_user_id")):
+            raise ValidationError(
+                {
+                    "presence": [
+                        "Exactly one of owner_user_id or viewer_user_id is required."
+                    ]
+                }
+            )
+
+
 class StoryAudiencePolicySchema(ma.Schema):
     owner_user_id = fields.Integer(
         required=True,
