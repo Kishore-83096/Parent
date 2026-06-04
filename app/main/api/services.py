@@ -263,6 +263,14 @@ def unblock_saved_contact(owner_user_id, payload):
     return set_saved_contact_blocked(owner_user_id, payload, False)
 
 
+def ghost_saved_contact(owner_user_id, payload):
+    return set_saved_contact_ghosted(owner_user_id, payload, True)
+
+
+def unghost_saved_contact(owner_user_id, payload):
+    return set_saved_contact_ghosted(owner_user_id, payload, False)
+
+
 def set_saved_contact_blocked(owner_user_id, payload, blocked):
     try:
         data = account_number_search_schema.load(payload or {})
@@ -284,6 +292,28 @@ def set_saved_contact_blocked(owner_user_id, payload, blocked):
         notify_messenger_presence_hidden(contact.owner, contact)
 
     message = "Contact blocked successfully." if blocked else "Contact unblocked successfully."
+    return {"message": message, "contact": build_saved_contact_result(contact)}, 200
+
+
+def set_saved_contact_ghosted(owner_user_id, payload, ghosted):
+    try:
+        data = account_number_search_schema.load(payload or {})
+    except ValidationError as error:
+        return {"errors": error.messages}, 400
+
+    contact, error_response, status_code = get_saved_contact_by_account_number(
+        owner_user_id,
+        data["account_number"],
+    )
+    if error_response:
+        return error_response, status_code
+
+    contact.ghosted = ghosted
+    db.session.add(contact)
+    db.session.commit()
+    refresh_saved_contacts_cache(owner_user_id)
+
+    message = "Contact ghosted successfully." if ghosted else "Contact unghosted successfully."
     return {"message": message, "contact": build_saved_contact_result(contact)}, 200
 
 
@@ -887,6 +917,7 @@ def build_saved_contact_result(contact):
         "alias_name": contact.alias_name,
         "account_number": contact.contact_user.account_number,
         "blocked": contact.blocked,
+        "ghosted": contact.ghosted,
         "profile_picture": contact.contact_user.profile.profile_picture if contact.contact_user.profile else None,
     }
 
@@ -898,6 +929,7 @@ def build_saved_contact_detail_result(contact):
         "alias_name": contact.alias_name,
         "account_number": contact.contact_user.account_number,
         "blocked": contact.blocked,
+        "ghosted": contact.ghosted,
         "profile_picture": profile.profile_picture if profile else None,
     }
 

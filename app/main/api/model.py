@@ -69,6 +69,7 @@ class Contact(db.Model):
     contact_user_id = db.Column(db.Integer, db.ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
     alias_name = db.Column(db.String(120), nullable=False)
     blocked = db.Column(db.Boolean, default=False, nullable=False)
+    ghosted = db.Column(db.Boolean, default=False, nullable=False)
     created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
     updated_at = db.Column(
         db.DateTime,

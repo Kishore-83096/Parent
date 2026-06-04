@@ -17,6 +17,7 @@ from app.main.api.services import (
     get_saved_contact_detail,
     get_saved_contacts,
     get_user_profile,
+    ghost_saved_contact,
     remove_user_profile_picture,
     register_user,
     resolve_group_member_contacts,
@@ -24,6 +25,7 @@ from app.main.api.services import (
     resolve_story_audience_policy,
     save_searched_contact,
     search_user_by_account_number,
+    unghost_saved_contact,
     unblock_saved_contact,
     update_saved_contact_alias,
     update_user_profile,
@@ -165,6 +167,18 @@ def block_contact():
 @jwt_required()
 def unblock_contact():
     return unblock_saved_contact(int(get_jwt_identity()), request.get_json() or {})
+
+
+@api_bp.post("/contacts/ghost")
+@jwt_required()
+def ghost_contact():
+    return ghost_saved_contact(int(get_jwt_identity()), request.get_json() or {})
+
+
+@api_bp.post("/contacts/unghost")
+@jwt_required()
+def unghost_contact():
+    return unghost_saved_contact(int(get_jwt_identity()), request.get_json() or {})
 
 
 @api_bp.delete("/contacts")
