@@ -288,6 +288,7 @@ def set_saved_contact_blocked(owner_user_id, payload, blocked):
     if error_response:
         return error_response, status_code
 
+    previous_ghosted = contact.ghosted
     contact.blocked = blocked
     if blocked:
         contact.ghosted = False
@@ -295,6 +296,8 @@ def set_saved_contact_blocked(owner_user_id, payload, blocked):
     db.session.commit()
     refresh_saved_contacts_cache(owner_user_id)
     notify_messenger_authorization_cache(owner_user_id, contact.contact_user_id)
+    if previous_ghosted != contact.ghosted:
+        notify_messenger_receipt_visibility_cache(owner_user_id, contact.contact_user_id)
     notify_messenger_presence_visibility(
         contact.owner,
         contact,
@@ -325,6 +328,7 @@ def set_saved_contact_ghosted(owner_user_id, payload, ghosted):
     db.session.commit()
     refresh_saved_contacts_cache(owner_user_id)
     notify_messenger_authorization_cache(owner_user_id, contact.contact_user_id)
+    notify_messenger_receipt_visibility_cache(owner_user_id, contact.contact_user_id)
     notify_messenger_presence_visibility(
         contact.owner,
         contact,
@@ -440,6 +444,65 @@ def notify_messenger_authorization_cache(owner_user_id, contact_user_id):
         return
 
 
+def build_messenger_receipt_visibility_cache_entry(owner_user_id, candidate_user_id):
+    response, status_code = resolve_receipt_visibility_policy(
+        {
+            "owner_user_id": owner_user_id,
+            "candidate_user_ids": [candidate_user_id],
+        }
+    )
+
+    if status_code >= 500 or not isinstance(response, dict) or response.get("allowed") is not True:
+        return None
+
+    return {
+        "owner_user_id": owner_user_id,
+        "candidate_user_id": candidate_user_id,
+        "hidden": candidate_user_id in set(response.get("hidden_user_ids") or []),
+    }
+
+
+def notify_messenger_receipt_visibility_cache(owner_user_id, contact_user_id):
+    base_url = current_app.config.get("MESSENGER_SERVICE_URL") or ""
+    internal_service_token = current_app.config.get("INTERNAL_SERVICE_TOKEN") or ""
+    if not base_url or not internal_service_token:
+        return
+
+    owner = db.session.get(User, owner_user_id)
+    contact_user = db.session.get(User, contact_user_id)
+    if not owner or not contact_user:
+        return
+
+    policies = [
+        build_messenger_receipt_visibility_cache_entry(owner.id, contact_user.id),
+        build_messenger_receipt_visibility_cache_entry(contact_user.id, owner.id),
+    ]
+    policies = [policy for policy in policies if policy]
+    if not policies:
+        return
+
+    cache_url = f"{base_url.rstrip('/')}/receipts/internal/visibility-cache/"
+    payload = json.dumps({"policies": policies}).encode("utf-8")
+    request_payload = Request(
+        cache_url,
+        data=payload,
+        headers={
+            "Content-Type": "application/json",
+            "X-Internal-Service-Token": internal_service_token,
+        },
+        method="POST",
+    )
+
+    try:
+        with urlopen(
+            request_payload,
+            timeout=min(current_app.config["MESSENGER_SERVICE_TIMEOUT_SECONDS"], 2),
+        ):
+            return
+    except (HTTPError, URLError, TimeoutError):
+        return
+
+
 def delete_saved_contact(owner_user_id, payload):
     try:
         data = account_number_search_schema.load(payload or {})
@@ -458,6 +521,7 @@ def delete_saved_contact(owner_user_id, payload):
     db.session.commit()
     refresh_saved_contacts_cache(owner_user_id)
     notify_messenger_authorization_cache(owner_user_id, contact_user_id)
+    notify_messenger_receipt_visibility_cache(owner_user_id, contact_user_id)
 
     return {"message": "Contact deleted successfully."}, 200
 
