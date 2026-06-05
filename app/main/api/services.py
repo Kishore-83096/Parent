@@ -229,6 +229,7 @@ def save_searched_contact(owner_user_id, payload):
     db.session.add(contact)
     db.session.commit()
     refresh_saved_contacts_cache(owner.id)
+    notify_messenger_authorization_cache(owner.id, contact_user.id)
 
     return {"message": message, "contact": build_saved_contact_result(contact)}, status_code
 
@@ -250,6 +251,7 @@ def update_saved_contact_alias(owner_user_id, payload):
     db.session.add(contact)
     db.session.commit()
     refresh_saved_contacts_cache(owner_user_id)
+    notify_messenger_authorization_cache(owner_user_id, contact.contact_user_id)
 
     return {
         "message": "Contact alias updated successfully.",
@@ -292,6 +294,7 @@ def set_saved_contact_blocked(owner_user_id, payload, blocked):
     db.session.add(contact)
     db.session.commit()
     refresh_saved_contacts_cache(owner_user_id)
+    notify_messenger_authorization_cache(owner_user_id, contact.contact_user_id)
     notify_messenger_presence_visibility(
         contact.owner,
         contact,
@@ -321,6 +324,7 @@ def set_saved_contact_ghosted(owner_user_id, payload, ghosted):
     db.session.add(contact)
     db.session.commit()
     refresh_saved_contacts_cache(owner_user_id)
+    notify_messenger_authorization_cache(owner_user_id, contact.contact_user_id)
     notify_messenger_presence_visibility(
         contact.owner,
         contact,
@@ -370,6 +374,72 @@ def notify_messenger_presence_visibility(owner, contact, visible):
         return
 
 
+def build_messenger_authorization_cache_entry(sender_user_id, recipient_account_number):
+    response, status_code = authorize_messaging_pair(
+        {
+            "sender_user_id": sender_user_id,
+            "recipient_account_number": recipient_account_number,
+        }
+    )
+
+    if not isinstance(response, dict):
+        return None
+
+    return {
+        "sender_user_id": sender_user_id,
+        "recipient_account_number": recipient_account_number,
+        "status_code": status_code,
+        "response": response,
+    }
+
+
+def notify_messenger_authorization_cache(owner_user_id, contact_user_id):
+    base_url = current_app.config.get("MESSENGER_SERVICE_URL") or ""
+    internal_service_token = current_app.config.get("INTERNAL_SERVICE_TOKEN") or ""
+    if not base_url or not internal_service_token:
+        return
+
+    owner = db.session.get(User, owner_user_id)
+    contact_user = db.session.get(User, contact_user_id)
+    if not owner or not contact_user:
+        return
+
+    authorizations = [
+        build_messenger_authorization_cache_entry(
+            owner.id,
+            contact_user.account_number,
+        ),
+        build_messenger_authorization_cache_entry(
+            contact_user.id,
+            owner.account_number,
+        ),
+    ]
+    authorizations = [entry for entry in authorizations if entry]
+    if not authorizations:
+        return
+
+    cache_url = f"{base_url.rstrip('/')}/messages/internal/authorization-cache/"
+    payload = json.dumps({"authorizations": authorizations}).encode("utf-8")
+    request_payload = Request(
+        cache_url,
+        data=payload,
+        headers={
+            "Content-Type": "application/json",
+            "X-Internal-Service-Token": internal_service_token,
+        },
+        method="POST",
+    )
+
+    try:
+        with urlopen(
+            request_payload,
+            timeout=min(current_app.config["MESSENGER_SERVICE_TIMEOUT_SECONDS"], 2),
+        ):
+            return
+    except (HTTPError, URLError, TimeoutError):
+        return
+
+
 def delete_saved_contact(owner_user_id, payload):
     try:
         data = account_number_search_schema.load(payload or {})
@@ -383,9 +453,11 @@ def delete_saved_contact(owner_user_id, payload):
     if error_response:
         return error_response, status_code
 
+    contact_user_id = contact.contact_user_id
     db.session.delete(contact)
     db.session.commit()
     refresh_saved_contacts_cache(owner_user_id)
+    notify_messenger_authorization_cache(owner_user_id, contact_user_id)
 
     return {"message": "Contact deleted successfully."}, 200
 
