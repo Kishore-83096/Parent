@@ -1,6 +1,6 @@
 # PARROT Parent Service
 
-The PARROT Parent Service is a Flask-based backend for parent account management in the PARROT system. It handles registration, login, JWT-based authentication, profile management, profile-picture upload to Cloudinary, password changes, verified account deletion, service health checks, and database inspection endpoints used for testing and diagnostics.
+The PARROT Parent Service is a Flask-based backend for account, profile, contact, and privacy-policy management in the PARROT system. It handles registration, login, JWT-based authentication, profile management, profile-picture upload to Cloudinary, saved contacts, block and ghost rules, password changes, verified account deletion, Messenger JWT issuing, internal Messenger policy checks, service health checks, and local database inspection endpoints used for testing and diagnostics.
 
 ## What This Service Does
 
@@ -8,7 +8,10 @@ The PARROT Parent Service is a Flask-based backend for parent account management
 - Logs users in with JWT access and refresh tokens
 - Issues short-lived Messenger JWTs for the Messenger service
 - Stores parent profile data
-- Authorizes Messenger service requests for text, attachment, voice-note, audio, and video sends against saved-contact and block rules
+- Authorizes Messenger service requests for text, attachment, voice-note, audio, video, edit, delete, story, and group flows against saved-contact, block, and ghost rules
+- Stores saved-contact aliases plus `blocked` and `ghosted` privacy flags
+- Resolves internal presence, receipt, story-audience, story-visibility, and group-member policies for Messenger
+- Provides a local development bridge for triggering Messenger expired-story cleanup from the DB schema page
 - Uploads, replaces, compresses, and removes profile pictures with Cloudinary
 - Lets authenticated users change passwords securely
 - Lets authenticated users delete their account only after identity verification
@@ -78,6 +81,8 @@ DATABASE_URL=sqlite:///parent.db
 CLOUDINARY_URL=your_cloudinary_url
 CLOUDINARY_PROFILE_FOLDER=MAIN/Display_pics
 INTERNAL_SERVICE_TOKEN=shared_internal_service_token
+MESSENGER_SERVICE_URL=http://127.0.0.1:8000
+MESSENGER_SERVICE_TIMEOUT_SECONDS=5
 MESSAGING_JWT_SECRET=shared_messenger_jwt_secret
 MESSAGING_JWT_ISSUER=parrot-parent
 MESSAGING_JWT_AUDIENCE=parrot-messenger
@@ -93,6 +98,7 @@ Important notes:
 - `CLOUDINARY_URL` is required for profile picture uploads.
 - `CLOUDINARY_PROFILE_FOLDER` controls where images are stored in Cloudinary.
 - `INTERNAL_SERVICE_TOKEN` must match the Messenger service token for internal APIs.
+- `MESSENGER_SERVICE_URL` is used by local diagnostics to call Messenger story cleanup.
 - `MESSAGING_JWT_SECRET`, issuer, and audience must match Messenger settings.
 
 ## Running Locally
@@ -298,11 +304,17 @@ There are two groups of routes:
 | `/health` | `GET` | No | None | `{"status": "ok"}` | Usually none unless server error |
 | `/db/health` | `GET` | No | None | `{"database": "connected"}` | `{"database": "disconnected", "error": "..."}` |
 | `/db/schema` | `GET` | Local development only | None | HTML schema viewer page | `404` outside local development; server or database errors |
+| `/db/schema/stories/cleanup-expired` | `POST` | Local development only | None | redirects back to DB schema page with cleanup status | `404` outside local development; Messenger cleanup errors |
 | `/parent/auth/register` | `POST` | No | `{"username","password","confirm_password","first_name","last_name"}` | `{"message":"User registered successfully.","user":{...}}` | password mismatch, short password, invalid username, duplicate username, duplicate email |
 | `/parent/auth/login` | `POST` | No | `{"username","password"}` | `{"access_token":"...","refresh_token":"...","user":{...}}` | invalid username or password, validation errors |
 | `/parent/auth/refresh` | `POST` | Refresh token | None | `{"access_token":"..."}` | missing token, invalid token, expired token |
 | `/parent/messaging/token` | `POST` | Access token | None | `{"messaging_token":"...","token_type":"Bearer","expires_in":300}` | missing token, invalid token, missing messaging secret |
-| `/parent/internal/messaging/authorize` | `POST` | Internal service token | `{"sender_user_id":5,"recipient_account_number":"7XXXXXXXXX"}` | `{"allowed":true,...}` | missing internal token, sender or recipient not found, contact not saved, blocked, self-message |
+| `/parent/internal/messaging/authorize` | `POST` | Internal service token | `{"sender_user_id":5,"recipient_account_number":"7XXXXXXXXX"}` | `{"allowed":true,...}` | missing internal token, sender or recipient not found, contact not saved, self-message |
+| `/parent/internal/presence/visibility` | `POST` | Internal service token | owner/viewer plus candidate user ids | hidden user id lists | missing internal token, validation errors |
+| `/parent/internal/receipts/visibility` | `POST` | Internal service token | owner plus candidate user ids | hidden receipt user id lists | missing internal token, validation errors |
+| `/parent/internal/stories/audience` | `POST` | Internal service token | story owner plus audience account numbers | valid/excluded story audience contacts | missing internal token, validation errors |
+| `/parent/internal/stories/visibility` | `POST` | Internal service token | owner/viewer identifiers | story visibility decision | missing internal token, validation errors |
+| `/parent/internal/groups/members/resolve` | `POST` | Internal service token | owner plus member account numbers | valid saved-contact member records | missing internal token, validation errors |
 | `/parent/auth/change-password` | `POST` | Access token | `{"username","email","current_password","new_password"}` | `{"message":"Password changed successfully."}` | wrong username, email, or current password; same new password; short new password; missing token |
 | `/parent/profile/` | `GET` | Access token | None | profile JSON | profile not found, missing token, invalid token |
 | `/parent/users/search` | `POST` | Access token | `{"account_number":"7XXXXXXXXX"}` | `{"first_name":"...","last_name":"...","username":"...","profile_picture":"..."}` | missing or invalid account number, phone number not in Parrot, missing token |
@@ -312,6 +324,8 @@ There are two groups of routes:
 | `/parent/contacts/alias` | `PATCH` | Access token | `{"account_number":"7XXXXXXXXX","alias_name":"Amma"}` | updated contact JSON | contact not found, blank alias, missing token |
 | `/parent/contacts/block` | `POST` | Access token | `{"account_number":"7XXXXXXXXX"}` | blocked contact JSON | contact not found, phone number not in Parrot, missing token |
 | `/parent/contacts/unblock` | `POST` | Access token | `{"account_number":"7XXXXXXXXX"}` | unblocked contact JSON | contact not found, phone number not in Parrot, missing token |
+| `/parent/contacts/ghost` | `POST` | Access token | `{"account_number":"7XXXXXXXXX"}` | ghosted contact JSON | contact not found, phone number not in Parrot, missing token |
+| `/parent/contacts/unghost` | `POST` | Access token | `{"account_number":"7XXXXXXXXX"}` | unghosted contact JSON | contact not found, phone number not in Parrot, missing token |
 | `/parent/contacts` | `DELETE` | Access token | `{"account_number":"7XXXXXXXXX"}` | `{"message":"Contact deleted successfully."}` | contact not found, phone number not in Parrot, missing token |
 | `/parent/profile/` | `PUT` | Access token | JSON or form-data with profile fields and optional `profile_picture` | updated profile JSON | invalid `card_type`, invalid image type, image cannot compress to `50 KB`, user not found, validation errors, missing token |
 | `/parent/profile/picture` | `DELETE` | Access token | None | `{"message":"Profile picture removed successfully."}` | profile not found, profile picture not found, Cloudinary deletion failure, missing token |
@@ -396,6 +410,23 @@ Warning:
 - this route exposes schema and row data
 - it is enabled only by the development config
 - it returns `404` outside local loopback requests or outside development mode
+
+### `POST /db/schema/stories/cleanup-expired`
+
+Purpose:
+
+- local development helper shown from the DB schema page
+- calls Messenger `POST /stories/internal/cleanup-expired/`
+- uses `MESSENGER_SERVICE_URL` and `INTERNAL_SERVICE_TOKEN`
+
+Response type:
+
+- redirects back to the DB schema HTML page with a flash message
+
+Warning:
+
+- available only when `/db/schema` is available
+- intended for local diagnostics, not public production traffic
 
 ## Main API Routes
 
@@ -568,8 +599,8 @@ Success response:
 
 Purpose:
 
-- internal-only endpoint used by Messenger before allowing a text, attachment, voice-note, audio, or video message
-- validates sender, recipient, saved-contact relationship, and block state
+- internal-only endpoint used by Messenger before allowing a text, attachment, voice-note, audio, video, story reply, story reaction, or edited direct message
+- validates sender, recipient, saved-contact relationship, block state, and ghost state
 
 Headers:
 
@@ -597,7 +628,56 @@ Allowed response:
 }
 ```
 
-Block state does not deny saved-contact sends. Allowed responses include internal `delivery_blocked` and `block_context` fields so Messenger can keep recipient-blocked messages at `sent` without delivering them. Deny responses include `allowed: false` with a `reason`, such as `contact_not_saved` or `self_message`. Parent applies this policy the same way for text, files, voice notes, audio, and video because message content and media metadata stay outside Parent.
+Block state does not deny saved-contact sends. Allowed responses include internal `delivery_blocked`, `block_context`, and `ghost_context` fields so Messenger can keep recipient-blocked messages at `sent`, hide ghosted receipt visibility, and continue enforcing privacy rules on later edits/status updates. Deny responses include `allowed: false` with a `reason`, such as `contact_not_saved` or `self_message`. Parent applies this policy the same way for text, files, voice notes, audio, video, story replies, story reactions, and edited messages because message content and media metadata stay outside Parent.
+
+### Internal Policy Routes
+
+These routes are internal-only and require:
+
+```text
+X-Internal-Service-Token: <shared_internal_service_token>
+```
+
+They are called by Messenger, not directly by React.
+
+| Route | Purpose |
+|---|---|
+| `POST /parent/internal/presence/visibility` | returns users whose online/offline presence should be hidden because of block or ghost rules |
+| `POST /parent/internal/receipts/visibility` | returns users whose delivery/read receipts should be hidden from a message owner |
+| `POST /parent/internal/stories/audience` | resolves a story owner's saved contacts into allowed/excluded audience records |
+| `POST /parent/internal/stories/visibility` | checks whether a viewer can see a story and whether the view should be hidden from the owner |
+| `POST /parent/internal/groups/members/resolve` | validates group member account numbers against the creator's saved contacts |
+
+Presence policy example:
+
+```json
+{
+  "owner_user_id": 5,
+  "candidate_user_ids": [4, 6, 7]
+}
+```
+
+```json
+{
+  "allowed": true,
+  "hidden_user_ids": [7],
+  "blocked_user_ids": [],
+  "ghosted_user_ids": [7]
+}
+```
+
+Receipt visibility uses the same candidate-list shape, but returns `hidden_user_ids` and `visible_user_ids` for read/delivered receipt filtering.
+
+Group member resolution request:
+
+```json
+{
+  "owner_user_id": 5,
+  "member_account_numbers": ["7XXXXXXXXX"]
+}
+```
+
+Parent only returns members that are saved contacts of the creator. Messenger uses that result when creating groups and adding new members.
 
 ### `POST /parent/auth/change-password`
 
@@ -775,7 +855,7 @@ Purpose:
 
 - returns the authenticated user's saved contacts
 - caches saved contacts for 5 minutes
-- returns refreshed cache data after contact add, alias update, block, unblock, or delete
+- returns refreshed cache data after contact add, alias update, block, unblock, ghost, unghost, or delete
 
 Headers:
 
@@ -792,6 +872,7 @@ Success response:
       "alias_name": "Mom",
       "account_number": "7XXXXXXXXX",
       "blocked": false,
+      "ghosted": false,
       "profile_picture": "https://res.cloudinary.com/..."
     }
   ]
@@ -819,6 +900,7 @@ Success response:
     "alias_name": "Mom",
     "account_number": "7XXXXXXXXX",
     "blocked": false,
+    "ghosted": false,
     "profile_picture": "https://res.cloudinary.com/..."
   }
 }
@@ -865,6 +947,7 @@ Success response:
     "alias_name": "Mom",
     "account_number": "7XXXXXXXXX",
     "blocked": false,
+    "ghosted": false,
     "profile_picture": "https://res.cloudinary.com/..."
   }
 }
@@ -918,6 +1001,7 @@ Success response:
     "alias_name": "Amma",
     "account_number": "7XXXXXXXXX",
     "blocked": false,
+    "ghosted": false,
     "profile_picture": "https://res.cloudinary.com/..."
   }
 }
@@ -946,10 +1030,13 @@ Success response:
     "alias_name": "Mom",
     "account_number": "7XXXXXXXXX",
     "blocked": true,
+    "ghosted": false,
     "profile_picture": "https://res.cloudinary.com/..."
   }
 }
 ```
+
+Blocking a contact automatically removes ghosting for that same contact.
 
 ### `POST /parent/contacts/unblock`
 
@@ -974,6 +1061,68 @@ Success response:
     "alias_name": "Mom",
     "account_number": "7XXXXXXXXX",
     "blocked": false,
+    "ghosted": false,
+    "profile_picture": "https://res.cloudinary.com/..."
+  }
+}
+```
+
+### `POST /parent/contacts/ghost`
+
+Purpose:
+
+- marks a saved contact as ghosted
+- removes block state for that contact if it was blocked
+- tells Messenger privacy refresh logic that presence and receipt visibility should be hidden where policy applies
+
+Request body:
+
+```json
+{
+  "account_number": "7XXXXXXXXX"
+}
+```
+
+Success response:
+
+```json
+{
+  "message": "Contact ghosted successfully.",
+  "contact": {
+    "alias_name": "Mom",
+    "account_number": "7XXXXXXXXX",
+    "blocked": false,
+    "ghosted": true,
+    "profile_picture": "https://res.cloudinary.com/..."
+  }
+}
+```
+
+### `POST /parent/contacts/unghost`
+
+Purpose:
+
+- marks a saved contact as not ghosted
+- lets Messenger refresh presence and receipt visibility for that relationship
+
+Request body:
+
+```json
+{
+  "account_number": "7XXXXXXXXX"
+}
+```
+
+Success response:
+
+```json
+{
+  "message": "Contact unghosted successfully.",
+  "contact": {
+    "alias_name": "Mom",
+    "account_number": "7XXXXXXXXX",
+    "blocked": false,
+    "ghosted": false,
     "profile_picture": "https://res.cloudinary.com/..."
   }
 }
@@ -1276,9 +1425,9 @@ flask --app run.py db upgrade
 
 ## Current Messenger And E2EE Integration Notes
 
-The Parent service owns account identity and contact policy. It does not store encrypted message keys, linked-device keys, default-device password hashes, recovery keys, or message ciphertext. Those records live in the Messenger service.
+The Parent service owns account identity, saved contacts, aliases, and contact privacy policy. It does not store encrypted message keys, linked-device keys, default-device password hashes, recovery keys, message ciphertext, group messages, or story media. Those records live in the Messenger service.
 
-Parent is still required for encrypted messaging because it issues Messenger JWTs and authorizes message sends.
+Parent is still required for encrypted messaging because it issues Messenger JWTs and answers Messenger policy checks for sends, edits, presence, receipts, story visibility, and group member resolution.
 
 ### Parent Responsibilities
 
@@ -1286,8 +1435,11 @@ Parent is still required for encrypted messaging because it issues Messenger JWT
 - Return the current user id and account number to React.
 - Issue short-lived Messenger JWTs from `POST /parent/messaging/token`.
 - Authorize Messenger sends through `POST /parent/internal/messaging/authorize`.
-- Enforce contact and block rules used by Messenger before delivery.
-- Treat text, file, voice-note, audio, and video sends as the same authorization decision. Parent never receives message ciphertext, media blobs, voice-note waveform data, playback duration, or attachment metadata.
+- Enforce saved-contact, block, and ghost rules used by Messenger before delivery and before later edit/status policy refreshes.
+- Resolve presence and receipt visibility through internal policy endpoints so ghosted or blocked relationships do not leak online state or read/delivered state.
+- Resolve story audience and story visibility through internal policy endpoints.
+- Resolve group member account numbers from the creator's saved contacts before Messenger creates or expands a group.
+- Treat text, file, voice-note, audio, video, story reply, story reaction, and edited-message sends as the same authorization decision. Parent never receives message ciphertext, media blobs, voice-note waveform data, playback duration, story plaintext, or attachment metadata.
 
 ### Messenger JWT Contract
 
