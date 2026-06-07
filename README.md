@@ -79,10 +79,11 @@ SECRET_KEY=your_secret_key
 JWT_SECRET_KEY=your_jwt_secret_key
 DATABASE_URL=sqlite:///parent.db
 CLOUDINARY_URL=your_cloudinary_url
-CLOUDINARY_PROFILE_FOLDER=MAIN/Display_pics
+CLOUDINARY_ROOT_FOLDER=Parrot
 INTERNAL_SERVICE_TOKEN=shared_internal_service_token
-MESSENGER_SERVICE_URL=http://127.0.0.1:8000
+MESSENGER_SERVICE_URL=http://127.0.0.1:8000,https://parrot-messenger.onrender.com
 MESSENGER_SERVICE_TIMEOUT_SECONDS=5
+MESSENGER_CLEANUP_TIMEOUT_SECONDS=60
 MESSAGING_JWT_SECRET=shared_messenger_jwt_secret
 MESSAGING_JWT_ISSUER=parrot-parent
 MESSAGING_JWT_AUDIENCE=parrot-messenger
@@ -96,9 +97,10 @@ Important notes:
 
 - `DATABASE_URL` can point to SQLite for local development or PostgreSQL in production.
 - `CLOUDINARY_URL` is required for profile picture uploads.
-- `CLOUDINARY_PROFILE_FOLDER` controls where images are stored in Cloudinary.
+- `CLOUDINARY_ROOT_FOLDER` controls the Cloudinary root folder. Profile pictures are uploaded under `Parrot/<username-account_number>/dp`.
 - `INTERNAL_SERVICE_TOKEN` must match the Messenger service token for internal APIs.
-- `MESSENGER_SERVICE_URL` is used by local diagnostics to call Messenger story cleanup.
+- `MESSENGER_SERVICE_URL` is used by local diagnostics to call Messenger story cleanup. It can contain comma-separated fallback URLs.
+- `MESSENGER_CLEANUP_TIMEOUT_SECONDS` controls the manual expired-story cleanup timeout and should be longer than lightweight Messenger notifications.
 - `MESSAGING_JWT_SECRET`, issuer, and audience must match Messenger settings.
 
 ## Running Locally
@@ -418,6 +420,8 @@ Purpose:
 - local development helper shown from the DB schema page
 - calls Messenger `POST /stories/internal/cleanup-expired/`
 - uses `MESSENGER_SERVICE_URL` and `INTERNAL_SERVICE_TOKEN`
+- if `MESSENGER_SERVICE_URL` contains multiple comma-separated URLs, unreachable URLs are skipped until one responds
+- uses `MESSENGER_CLEANUP_TIMEOUT_SECONDS`, defaulting to at least `60` seconds, because hosted Messenger services may cold-start or spend time deleting story media
 
 Response type:
 

@@ -13,16 +13,52 @@ SENSITIVE_COLUMNS = {"password_hash", "card_number"}
 
 
 def cleanup_expired_messenger_stories():
-    base_url = current_app.config.get("MESSENGER_SERVICE_URL") or ""
+    base_urls = get_messenger_service_urls()
     internal_service_token = current_app.config.get("INTERNAL_SERVICE_TOKEN") or ""
-    cleanup_url = f"{base_url.rstrip('/')}/stories/internal/cleanup-expired/"
+    cleanup_timeout = current_app.config.get(
+        "MESSENGER_CLEANUP_TIMEOUT_SECONDS",
+        current_app.config["MESSENGER_SERVICE_TIMEOUT_SECONDS"],
+    )
 
-    if not base_url:
+    if not base_urls:
         return {"ok": False, "message": "Messenger service URL is not configured."}, 503
 
     if not internal_service_token:
         return {"ok": False, "message": "Internal service token is not configured."}, 503
 
+    attempted_urls = []
+
+    for base_url in base_urls:
+        cleanup_url = f"{base_url.rstrip('/')}/stories/internal/cleanup-expired/"
+        attempted_urls.append(cleanup_url)
+        cleanup_response, response_status = request_messenger_story_cleanup(
+            cleanup_url,
+            internal_service_token,
+            cleanup_timeout,
+        )
+
+        if cleanup_response is not None:
+            cleanup_response["messenger_url"] = base_url
+            return cleanup_response, response_status
+
+    return {
+        "ok": False,
+        "message": "Messenger cleanup service is unavailable.",
+        "messenger_urls": attempted_urls,
+    }, 503
+
+
+def get_messenger_service_urls():
+    service_urls = current_app.config.get("MESSENGER_SERVICE_URLS")
+    if not service_urls:
+        service_urls = [current_app.config.get("MESSENGER_SERVICE_URL") or ""]
+    elif isinstance(service_urls, str):
+        service_urls = [service_urls]
+
+    return [str(url).strip().rstrip("/") for url in service_urls if str(url).strip()]
+
+
+def request_messenger_story_cleanup(cleanup_url, internal_service_token, timeout):
     cleanup_request = Request(
         cleanup_url,
         data=b"{}",
@@ -36,7 +72,7 @@ def cleanup_expired_messenger_stories():
     try:
         with urlopen(
             cleanup_request,
-            timeout=current_app.config["MESSENGER_SERVICE_TIMEOUT_SECONDS"],
+            timeout=timeout,
         ) as response:
             response_status = response.status
             response_body = decode_json_response(response.read())
@@ -46,8 +82,13 @@ def cleanup_expired_messenger_stories():
             "message": "Messenger cleanup request failed.",
             "messenger": decode_json_response(error.read()),
         }, error.code
-    except (URLError, TimeoutError):
-        return {"ok": False, "message": "Messenger cleanup service is unavailable."}, 503
+    except (URLError, TimeoutError) as error:
+        current_app.logger.warning(
+            "Messenger cleanup service is unavailable at %s: %s",
+            cleanup_url,
+            error,
+        )
+        return None, None
 
     return {
         "ok": 200 <= response_status < 300,

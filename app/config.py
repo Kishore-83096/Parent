@@ -31,8 +31,12 @@ def get_allowed_hosts():
 
 
 def get_first_service_url(name, default=""):
+    return next(iter(get_service_urls(name, default)), "")
+
+
+def get_service_urls(name, default=""):
     urls = os.getenv(name, default)
-    return next((url.strip().rstrip("/") for url in urls.split(",") if url.strip()), "")
+    return [url.strip().rstrip("/") for url in urls.split(",") if url.strip()]
 
 
 class Config:
@@ -42,10 +46,18 @@ class Config:
     SQLALCHEMY_ENGINE_OPTIONS = get_engine_options(SQLALCHEMY_DATABASE_URI)
     SQLALCHEMY_TRACK_MODIFICATIONS = False
     CORS_ORIGINS = get_allowed_hosts()
-    CLOUDINARY_PROFILE_FOLDER = os.getenv("CLOUDINARY_PROFILE_FOLDER", "MAIN/Display_pics")
+    CLOUDINARY_ROOT_FOLDER = os.getenv("CLOUDINARY_ROOT_FOLDER", "Parrot").strip("/") or "Parrot"
+    CLOUDINARY_PROFILE_FOLDER = os.getenv("CLOUDINARY_PROFILE_FOLDER", "")
     INTERNAL_SERVICE_TOKEN = os.getenv("INTERNAL_SERVICE_TOKEN", "")
+    MESSENGER_SERVICE_URLS = get_service_urls("MESSENGER_SERVICE_URL", "http://localhost:8000")
     MESSENGER_SERVICE_URL = get_first_service_url("MESSENGER_SERVICE_URL", "http://localhost:8000")
     MESSENGER_SERVICE_TIMEOUT_SECONDS = int(os.getenv("MESSENGER_SERVICE_TIMEOUT_SECONDS", 5))
+    MESSENGER_CLEANUP_TIMEOUT_SECONDS = int(
+        os.getenv(
+            "MESSENGER_CLEANUP_TIMEOUT_SECONDS",
+            max(MESSENGER_SERVICE_TIMEOUT_SECONDS, 60),
+        )
+    )
     MESSAGING_JWT_SECRET = os.getenv("MESSAGING_JWT_SECRET", "")
     MESSAGING_JWT_ISSUER = os.getenv("MESSAGING_JWT_ISSUER", "parrot-parent")
     MESSAGING_JWT_AUDIENCE = os.getenv("MESSAGING_JWT_AUDIENCE", "parrot-messenger")

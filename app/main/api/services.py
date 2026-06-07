@@ -1,11 +1,11 @@
 import json
+import re
 from datetime import datetime, timedelta, timezone
 from io import BytesIO
 from secrets import randbelow
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlparse
 from urllib.request import Request, urlopen
-from uuid import uuid4
 
 import cloudinary
 import cloudinary.uploader
@@ -59,6 +59,8 @@ change_password_schema = ChangePasswordSchema()
 profile_update_schema = ProfileSchema(partial=True)
 ALLOWED_IMAGE_EXTENSIONS = {"jpg", "jpeg", "png", "webp"}
 MAX_PROFILE_IMAGE_SIZE = 50 * 1024
+CLOUDINARY_PROFILE_PICTURE_FOLDER = "dp"
+CLOUDINARY_PROFILE_PICTURE_PUBLIC_ID = "dp"
 
 
 def generate_account_number():
@@ -120,6 +122,7 @@ def create_messaging_token(user_id):
     payload = {
         "sub": str(user.id),
         "user_id": user.id,
+        "username": user.username,
         "account_number": user.account_number,
         "iss": current_app.config["MESSAGING_JWT_ISSUER"],
         "aud": current_app.config["MESSAGING_JWT_AUDIENCE"],
@@ -587,8 +590,10 @@ def authorize_messaging_pair(payload):
     return {
         "allowed": True,
         "sender_user_id": sender.id,
+        "sender_username": sender.username,
         "sender_account_number": sender.account_number,
         "recipient_user_id": recipient.id,
+        "recipient_username": recipient.username,
         "recipient_account_number": recipient.account_number,
         "delivery_blocked": recipient_blocked_sender,
         "block_context": {
@@ -601,6 +606,7 @@ def authorize_messaging_pair(payload):
         },
         "contact": {
             "alias_name": sender_contact.alias_name,
+            "display_name": sender_contact.alias_name or build_user_display_name(recipient),
             "blocked": sender_contact.blocked,
             "ghosted": sender_contact.ghosted,
         },
@@ -1268,16 +1274,21 @@ def save_profile_picture(profile, payload):
     if upload_error:
         return upload_error
 
+    folder = build_profile_picture_cloudinary_folder(profile)
+    previous_public_id = extract_cloudinary_public_id(profile.profile_picture)
     cloudinary.config(secure=True)
     result = cloudinary.uploader.upload(
         upload_file,
-        folder=current_app.config["CLOUDINARY_PROFILE_FOLDER"],
+        folder=folder,
         public_id=public_id,
         resource_type="image",
-        overwrite=False,
+        overwrite=True,
+        invalidate=True,
     )
 
-    delete_cloudinary_image(profile.profile_picture)
+    uploaded_public_id = result.get("public_id") or f"{folder}/{public_id}"
+    if previous_public_id and previous_public_id != uploaded_public_id:
+        delete_cloudinary_image(profile.profile_picture)
     payload["profile_picture"] = result["secure_url"]
     return None
 
@@ -1380,15 +1391,59 @@ def build_profile_picture_upload(file, extension):
 
     if len(content) <= MAX_PROFILE_IMAGE_SIZE:
         buffer = BytesIO(content)
-        buffer.name = f"{uuid4().hex}.{extension}"
-        return buffer, uuid4().hex, None
+        buffer.name = f"{CLOUDINARY_PROFILE_PICTURE_PUBLIC_ID}.{extension}"
+        return buffer, CLOUDINARY_PROFILE_PICTURE_PUBLIC_ID, None
 
     compressed = compress_image_to_size(content, extension)
     if compressed is None:
         return None, None, "Unable to compress profile picture uplaod a new profil pic less than 350kb of size."
 
-    compressed.name = f"{uuid4().hex}.{extension}"
-    return compressed, uuid4().hex, None
+    compressed.name = f"{CLOUDINARY_PROFILE_PICTURE_PUBLIC_ID}.{extension}"
+    return compressed, CLOUDINARY_PROFILE_PICTURE_PUBLIC_ID, None
+
+
+def build_profile_picture_cloudinary_folder(profile):
+    user = profile.user or db.session.get(User, profile.user_id)
+    return f"{build_user_cloudinary_folder(user)}/{CLOUDINARY_PROFILE_PICTURE_FOLDER}"
+
+
+def build_user_cloudinary_folder(user):
+    root_folder = current_app.config.get("CLOUDINARY_ROOT_FOLDER") or "Parrot"
+    if not user:
+        return f"{normalize_cloudinary_path_segment(root_folder, 'Parrot')}/unknown-user"
+
+    return "/".join(
+        [
+            normalize_cloudinary_path_segment(root_folder, "Parrot"),
+            build_user_cloudinary_segment(
+                username=user.username,
+                account_number=user.account_number,
+                user_id=user.id,
+            ),
+        ]
+    )
+
+
+def build_user_cloudinary_segment(username="", account_number="", user_id=None):
+    name_segment = normalize_cloudinary_path_segment(username, "")
+    account_segment = normalize_cloudinary_path_segment(account_number, "")
+
+    if name_segment and account_segment:
+        return f"{name_segment}-{account_segment}"
+    if account_segment:
+        return account_segment
+    if user_id:
+        return f"user-{user_id}"
+
+    return "unknown-user"
+
+
+def normalize_cloudinary_path_segment(value, fallback):
+    normalized = str(value or "").strip().replace("/", "-").replace("\\", "-")
+    normalized = re.sub(r"\s+", " ", normalized)
+    normalized = re.sub(r"[^A-Za-z0-9._ -]+", "-", normalized)
+    normalized = re.sub(r"-{2,}", "-", normalized).strip(" .-")
+    return (normalized or fallback)[:120]
 
 
 def compress_image_to_size(content, extension):
