@@ -49,8 +49,8 @@ class Config:
     CLOUDINARY_ROOT_FOLDER = os.getenv("CLOUDINARY_ROOT_FOLDER", "Parrot").strip("/") or "Parrot"
     CLOUDINARY_PROFILE_FOLDER = os.getenv("CLOUDINARY_PROFILE_FOLDER", "")
     INTERNAL_SERVICE_TOKEN = os.getenv("INTERNAL_SERVICE_TOKEN", "")
-    MESSENGER_SERVICE_URLS = get_service_urls("MESSENGER_SERVICE_URL", "http://localhost:8000")
-    MESSENGER_SERVICE_URL = get_first_service_url("MESSENGER_SERVICE_URL", "http://localhost:8000")
+    MESSENGER_SERVICE_URLS = get_service_urls("MESSENGER_SERVICE_URL", "http://127.0.0.1:8000")
+    MESSENGER_SERVICE_URL = get_first_service_url("MESSENGER_SERVICE_URL", "http://127.0.0.1:8000")
     MESSENGER_SERVICE_TIMEOUT_SECONDS = int(os.getenv("MESSENGER_SERVICE_TIMEOUT_SECONDS", 5))
     MESSENGER_CLEANUP_TIMEOUT_SECONDS = int(
         os.getenv(
