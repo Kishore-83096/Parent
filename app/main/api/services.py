@@ -233,6 +233,7 @@ def save_searched_contact(owner_user_id, payload):
     db.session.commit()
     refresh_saved_contacts_cache(owner.id)
     notify_messenger_authorization_cache(owner.id, contact_user.id)
+    notify_messenger_direct_room_visibility(owner.id, contact_user.id, hidden=False)
 
     return {"message": message, "contact": build_saved_contact_result(contact)}, status_code
 
@@ -506,6 +507,40 @@ def notify_messenger_receipt_visibility_cache(owner_user_id, contact_user_id):
         return
 
 
+def notify_messenger_direct_room_visibility(owner_user_id, contact_user_id, hidden):
+    base_url = current_app.config.get("MESSENGER_SERVICE_URL") or ""
+    internal_service_token = current_app.config.get("INTERNAL_SERVICE_TOKEN") or ""
+    if not base_url or not internal_service_token:
+        return
+
+    visibility_url = f"{base_url.rstrip('/')}/rooms/internal/direct-visibility/"
+    payload = json.dumps(
+        {
+            "owner_user_id": owner_user_id,
+            "peer_user_id": contact_user_id,
+            "hidden": bool(hidden),
+        }
+    ).encode("utf-8")
+    request_payload = Request(
+        visibility_url,
+        data=payload,
+        headers={
+            "Content-Type": "application/json",
+            "X-Internal-Service-Token": internal_service_token,
+        },
+        method="POST",
+    )
+
+    try:
+        with urlopen(
+            request_payload,
+            timeout=min(current_app.config["MESSENGER_SERVICE_TIMEOUT_SECONDS"], 2),
+        ):
+            return
+    except (HTTPError, URLError, TimeoutError):
+        return
+
+
 def delete_saved_contact(owner_user_id, payload):
     try:
         data = account_number_search_schema.load(payload or {})
@@ -525,6 +560,7 @@ def delete_saved_contact(owner_user_id, payload):
     refresh_saved_contacts_cache(owner_user_id)
     notify_messenger_authorization_cache(owner_user_id, contact_user_id)
     notify_messenger_receipt_visibility_cache(owner_user_id, contact_user_id)
+    notify_messenger_direct_room_visibility(owner_user_id, contact_user_id, hidden=True)
 
     return {"message": "Contact deleted successfully."}, 200
 
