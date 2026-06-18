@@ -292,7 +292,6 @@ def set_saved_contact_blocked(owner_user_id, payload, blocked):
     if error_response:
         return error_response, status_code
 
-    previous_ghosted = contact.ghosted
     contact.blocked = blocked
     if blocked:
         contact.ghosted = False
@@ -300,8 +299,7 @@ def set_saved_contact_blocked(owner_user_id, payload, blocked):
     db.session.commit()
     refresh_saved_contacts_cache(owner_user_id)
     notify_messenger_authorization_cache(owner_user_id, contact.contact_user_id)
-    if previous_ghosted != contact.ghosted:
-        notify_messenger_receipt_visibility_cache(owner_user_id, contact.contact_user_id)
+    notify_messenger_receipt_visibility_cache(owner_user_id, contact.contact_user_id)
     notify_messenger_presence_visibility(
         contact.owner,
         contact,
@@ -686,7 +684,7 @@ def resolve_receipt_visibility_policy(payload):
         .filter(
             Contact.owner_user_id == owner.id,
             Contact.contact_user_id.in_(candidate_user_ids),
-            Contact.ghosted.is_(True),
+            Contact.ghosted.is_(True) | Contact.blocked.is_(True),
         )
         .all()
     )
@@ -1034,6 +1032,19 @@ def authorize_story_visibility_policy(payload):
             viewer_contact,
         ), 403
 
+    if owner_blocked_viewer:
+        return build_story_visibility_denial(
+            owner,
+            viewer,
+            "owner_blocked_viewer",
+            owner_blocked_viewer,
+            viewer_blocked_owner,
+            owner_ghosted_viewer,
+            viewer_ghosted_owner,
+            owner_contact,
+            viewer_contact,
+        ), 403
+
     if viewer_blocked_owner:
         return build_story_visibility_denial(
             owner,
@@ -1106,6 +1117,9 @@ def get_reverse_blocked_user_ids(owner_user_id, viewer_user_ids):
 def get_story_contact_exclusion_reason(contact, reverse_blocked_user_ids):
     if contact.contact_user_id == contact.owner_user_id:
         return "self_contact"
+
+    if contact.blocked:
+        return "owner_blocked_contact"
 
     if contact.contact_user_id in reverse_blocked_user_ids:
         return "contact_blocked_owner"
